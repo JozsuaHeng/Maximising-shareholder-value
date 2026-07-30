@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$MSV</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Ccircle cx='24' cy='24' r='23' fill='%231baf7a'/%3E%3Ctext x='24' y='30' text-anchor='middle' font-family='ui-monospace,monospace' font-weight='800' font-size='17' letter-spacing='-1.2' fill='%2306120d'%3EMSV%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div class="brand" id="homeTitle" title="Maximising Shareholder Value (mostly a joke — but the numbers are real)">
+      <div class="brand-lockup">
+        <h1>$MSV</h1>
+        <span class="brand-tagline">Maximising Shareholder Value</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="market-clock" id="marketClock">
+        <div class="clock-time" id="clockTime">--:--:--</div>
+        <div class="clock-meta" id="clockMeta">Detecting timezone...</div>
+        <div class="clock-location hidden" id="clockLocation"></div>
+      </div>
+      <button id="themeToggle" class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">🌙</button>
+    </div>
+  </div>
+  <p class="tagline">Search a ticker to see the numbers, what they mean, and a plain-English read on the stock — all in one place.</p>
+  <div class="search-row">
+    <input type="text" id="tickerInput" placeholder="Enter a ticker (e.g. AAPL)" autocomplete="off">
+    <button id="searchBtn">Search</button>
+  </div>
+</header>
+
+<section id="homeView" class="home-view">
+  <div class="home-decor" aria-hidden="true"></div>
+
+  <div class="card movers-card">
+    <h3>Today's Movers <span class="card-subtitle">(biggest swings across every category below)</span></h3>
+    <div id="moversBubbles" class="movers-bubbles"><p class="muted">Loading...</p></div>
+  </div>
+
+  <div id="homeGrid" class="home-grid"></div>
+</section>
+
+<main id="dashboard" class="dashboard-grid hidden">
+
+  <div class="dashboard-left">
+
+    <section class="card overview">
+      <div class="overview-top">
+        <img id="logo" src="" alt="" class="logo hidden">
+        <div>
+          <h2 id="companyName">--</h2>
+          <div class="overview-meta">
+            <span id="ticker" class="ticker-badge">--</span>
+            <span id="exchange" class="meta-badge">--</span>
+            <span id="industry" class="meta-badge">--</span>
+          </div>
+        </div>
+      </div>
+      <div class="price-row">
+        <span id="price" class="price">--</span>
+        <span id="change" class="change">--</span>
+      </div>
+      <div class="mini-stats">
+        <div class="mini-stat"><span class="mini-stat-label">Open</span><span id="openVal">--</span></div>
+        <div class="mini-stat"><span class="mini-stat-label">Day High</span><span id="highVal">--</span></div>
+        <div class="mini-stat"><span class="mini-stat-label">Day Low</span><span id="lowVal">--</span></div>
+        <div class="mini-stat"><span class="mini-stat-label">Prev Close</span><span id="prevCloseVal">--</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>About the Company</h3>
+      <div class="company-facts" id="companyFacts"></div>
+      <p id="descriptionContent" class="description-text">--</p>
+      <div id="upcomingEvents" class="upcoming-events"></div>
+      <div id="companyHeadlines" class="company-headlines"></div>
+    </section>
+
+    <section class="card">
+      <h3>Price Chart <span class="card-subtitle">(via Twelve Data)</span></h3>
+      <div class="chart-range-row" id="chartRangeRow">
+        <button data-range="1D">1D</button>
+        <button data-range="1H">1H</button>
+        <button data-range="4H">4H</button>
+        <button data-range="1W">1W</button>
+        <button data-range="1M">1M</button>
+        <button data-range="6M" class="active">6M</button>
+        <button data-range="1Y">1Y</button>
+      </div>
+      <div class="chart-overlay-row" id="chartOverlayRow">
+        <button data-overlay="sma20">SMA 20</button>
+        <button data-overlay="sma50">SMA 50</button>
+        <button data-overlay="ema20">EMA 20</button>
+      </div>
+      <p class="muted small session-legend">
+        <span class="legend-swatch legend-pre"></span>Pre-market
+        <span class="legend-swatch legend-after"></span>After-hours
+        <span class="legend-note">(shaded bands on 1D/1H/4H/1W — Twelve Data's free plan doesn't return actual pre/post-market prices, so these mark the time windows, not price action)</span>
+      </p>
+      <div class="chart-wrap" id="chartWrap">
+        <canvas id="priceChart" data-css-height="220" height="220"></canvas>
+        <div id="chartTooltip" class="chart-tooltip hidden"></div>
+      </div>
+      <p id="chartNote" class="muted hidden"></p>
+
+      <div class="chart-subpanel">
+        <div class="chart-subpanel-label">Volume</div>
+        <canvas id="volumeChart" data-css-height="50" height="50"></canvas>
+      </div>
+      <div class="chart-subpanel">
+        <div class="chart-subpanel-label">RSI (14) <button class="help-btn" id="rsiHelpBtn">?</button></div>
+        <canvas id="rsiChart" data-css-height="60" height="60"></canvas>
+      </div>
+      <div class="chart-subpanel">
+        <div class="chart-subpanel-label">MACD (12, 26, 9) <button class="help-btn" id="macdHelpBtn">?</button></div>
+        <canvas id="macdChart" data-css-height="60" height="60"></canvas>
+      </div>
+      <p id="srNote" class="muted small"></p>
+    </section>
+
+    <section class="card">
+      <h3>Valuation</h3>
+      <div class="grid" id="valuationGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Growth</h3>
+      <div class="grid" id="growthGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Profitability</h3>
+      <div class="grid" id="profitabilityGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Financial Health</h3>
+      <div class="grid" id="healthGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Dividends</h3>
+      <div class="grid" id="dividendsGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Momentum</h3>
+      <div class="grid" id="momentumGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>52-Week Range
+        <button id="rangeHelpBtn" class="help-btn">?</button>
+      </h3>
+      <div class="range-gauge-wrap hidden" id="rangeGaugeWrap">
+        <div class="range-gauge">
+          <div class="range-gauge-marker" id="rangeGaugeMarker"></div>
+        </div>
+        <div class="range-gauge-labels">
+          <span id="rangeLowLabel">--</span>
+          <span id="rangeHighLabel">--</span>
+        </div>
+      </div>
+      <div class="grid" id="rangeGrid"></div>
+    </section>
+
+    <section class="card">
+      <h3>Recent Earnings</h3>
+      <div id="earningsContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Financial Statements <span class="card-subtitle">(from SEC-filed reports, via Finnhub)</span></h3>
+      <div id="financialsContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Shares Breakdown
+        <button id="sharesHelpBtn" class="help-btn">?</button>
+      </h3>
+      <div id="sharesContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Who Holds This Stock</h3>
+      <div id="ownershipContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>SEC Filings <span class="card-subtitle">(direct links to EDGAR)</span></h3>
+      <div id="filingsContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Similar Stocks</h3>
+      <div id="peersContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Latest News</h3>
+      <div id="newsContent"></div>
+    </section>
+
+  </div>
+
+  <div class="dashboard-right">
+
+    <section class="card">
+      <h3>Analyst Recommendations
+        <button id="recommendationHelpBtn" class="help-btn">?</button>
+      </h3>
+      <div id="recommendationContent"></div>
+    </section>
+
+    <section class="card">
+      <h3>Price Reference Points <span class="card-subtitle">(historical, not a forecast)</span></h3>
+      <div id="scenarioContent"></div>
+    </section>
+
+    <section class="card outlook-card">
+      <h3>Outlook <span class="card-subtitle">(rule-based — not financial advice)</span></h3>
+      <p id="outlookHeadline" class="outlook-headline">--</p>
+      <ul id="outlookBullets" class="outlook-bullets"></ul>
+      <p id="outlookCaveat" class="muted small"></p>
+    </section>
+
+  </div>
+
+</main>
+
+<div id="status" class="status"></div>
+
+<div id="tooltipOverlay" class="tooltip-overlay hidden"></div>
+<div id="tooltipPopup" class="tooltip-popup hidden">
+  <div class="tooltip-header">
+    <strong id="tooltipTerm"></strong>
+    <button id="tooltipClose">&times;</button>
+  </div>
+  <p id="tooltipWhat" class="tooltip-what"></p>
+  <p id="tooltipFormula" class="tooltip-formula"></p>
+  <p class="tooltip-line"><span class="tooltip-tag tag-high">High usually means</span></p>
+  <p id="tooltipHigh" class="tooltip-detail"></p>
+  <p class="tooltip-line"><span class="tooltip-tag tag-low">Low usually means</span></p>
+  <p id="tooltipLow" class="tooltip-detail"></p>
+  <p id="tooltipSectorDynamic" class="tooltip-dynamic hidden"></p>
+  <p class="tooltip-line"><span class="tooltip-tag tag-sector">In this sector, generally</span></p>
+  <p id="tooltipSector" class="tooltip-detail"></p>
+</div>
+
+<script src="config.js"></script>
+<script src="definitions.js"></script>
+<script src="sectorRules.js"></script>
+<script src="analysis.js"></script>
+<script src="clock.js"></script>
+<script src="script.js"></script>
+<script src="chart.js"></script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+// Plain-English definitions shown in the (?) tooltip popups.
+// Each entry has: what the term means, its formula, what a high reading
+// usually implies, what a low reading usually implies, and a static note
+// on how "high"/"low" shift by sector in general. When a ticker is loaded,
+// script.js also injects a DYNAMIC sentence above the static sector note,
+// grounded in that specific company's actual detected industry (via
+// sectorRules.js) — the static text stays as general background reading.
+//
+// The sector ranges are general rules of thumb from typical historical
+// norms, not live sector averages pulled from data — treat them as a
+// starting point for your own research, not a verdict.
+//
+// Add to this as you add more indicators to the dashboard.
+
+const DEFINITIONS = {
+  peRatio: {
+    what: "Price-to-Earnings (P/E) Ratio: how much investors are paying today for each $1 of the company's annual earnings.",
+    formula: "P/E = Share Price ÷ Earnings Per Share (EPS)",
+    high: "A high P/E often means the market expects strong future growth — but it can also mean the stock is simply expensive relative to what it currently earns.",
+    low: "A low P/E can mean the stock is undervalued, or it can be a warning sign that investors expect earnings to decline.",
+    sector: "Banks and utilities often trade at P/E ~8–15 (slow, steady growth expected). Software/tech growth names often run P/E 25–50+ (market pricing in years of growth). A P/E of 30 is unremarkable for tech but would be considered rich for a utility.",
+  },
+  pbRatio: {
+    what: "Price-to-Book (P/B) Ratio: compares the stock price to the company's book (accounting) value — roughly, assets minus liabilities, per share.",
+    formula: "P/B = Share Price ÷ Book Value Per Share",
+    high: "A high P/B suggests the market values the company well above its accounting net worth, often due to strong brand, growth prospects, or intangible assets not fully captured on the balance sheet.",
+    low: "A P/B under 1 can mean the stock is undervalued, or that the market doubts the stated value of the company's assets.",
+    sector: "Asset-heavy sectors like banks and industrials are often judged relative to P/B (commonly 1–2). Asset-light sectors like software routinely trade at P/B of 10+ since their value is mostly intangible (people, code, brand) rather than physical assets on the balance sheet.",
+  },
+  quickRatio: {
+    what: "Quick Ratio: (cash + receivables) divided by current liabilities. Measures whether a company can pay short-term debts without selling inventory.",
+    formula: "Quick Ratio = (Cash + Receivables) ÷ Current Liabilities",
+    high: "A high quick ratio means plenty of easily-accessible cash to cover near-term bills — safe, but a very high number can also mean cash is sitting idle instead of being invested in growth.",
+    low: "Below 1 means the company may struggle to cover short-term obligations without selling inventory or raising more cash.",
+    sector: "Retail and manufacturing businesses often run lower quick ratios (0.5–1) because so much value sits in inventory. Software and services companies, which carry little inventory, are often expected to run higher (1.5+). Not very meaningful for banks/insurers, which don't carry typical current-liability structures.",
+  },
+  currentRatio: {
+    what: "Current Ratio: current assets divided by current liabilities. Broader than the quick ratio since it includes inventory.",
+    formula: "Current Ratio = Current Assets ÷ Current Liabilities",
+    high: "Generally reassuring — short-term obligations are well covered. Very high (e.g. above 3) can suggest assets aren't being used efficiently.",
+    low: "Below 1 means current liabilities exceed current assets, a potential red flag for short-term financial health.",
+    sector: "Grocery/retail chains often operate comfortably below 1.5 because inventory turns over fast into cash. Capital-intensive or cyclical industries (industrials, construction) are often expected to hold more buffer, closer to 2. Not very meaningful for banks/insurers.",
+  },
+  debtToEquity: {
+    what: "Debt-to-Equity Ratio: total debt divided by shareholder equity. Shows how much of the company is financed by borrowing vs. its own capital.",
+    formula: "D/E = Total Debt ÷ Shareholder Equity",
+    high: "Higher leverage — more reliant on borrowed money. Can amplify returns in good times but adds risk if earnings drop or interest rates rise.",
+    low: "Conservative financing with little debt. Generally lower risk, though it can also mean the company isn't using cheap debt to fuel growth.",
+    sector: "Utilities and real estate (REITs) routinely run high D/E (1.5–3+) because their steady, regulated cash flows can safely support heavy borrowing. Tech companies typically run much lower (under 0.5) since they rely less on physical assets to borrow against.",
+  },
+  roe: {
+    what: "Return on Equity (ROE): net income divided by shareholder equity. Shows how efficiently a company turns invested capital into profit.",
+    formula: "ROE = Net Income ÷ Shareholder Equity",
+    high: "A high ROE suggests efficient, profitable use of shareholders' money — though very high ROE can sometimes be inflated by heavy debt rather than genuine efficiency.",
+    low: "A low ROE suggests the company isn't generating much profit from the capital shareholders have put in.",
+    sector: "Consumer staples and software companies often post ROE north of 20–30%. Capital-intensive sectors like utilities or telecom typically run lower, often 8–12%, simply due to the sheer size of assets required per dollar of profit.",
+  },
+  epsTTM: {
+    what: "Earnings Per Share (TTM = trailing twelve months): net income divided by shares outstanding, over the last full year. A core measure of per-share profitability.",
+    formula: "EPS = Net Income ÷ Shares Outstanding",
+    high: "Higher EPS means more profit is attributable to each share — generally positive, but only meaningful compared to the share price (see P/E) and prior periods.",
+    low: "Low or negative EPS means the company is earning little or losing money per share — common for early-stage growth companies, a concern for mature ones.",
+    sector: "Negative EPS is normal and often tolerated for early-stage biotech or unprofitable high-growth tech while they scale. The same negative EPS in a mature retailer or bank would typically be read as a serious warning sign.",
+  },
+  dividendYield: {
+    what: "Dividend Yield: annual dividend payments divided by share price, shown as a percentage. The cash return you'd get from dividends alone at the current price.",
+    formula: "Dividend Yield = Annual Dividend Per Share ÷ Share Price",
+    high: "A high yield means more income today, but an unusually high yield can also signal the market expects the dividend to be cut, or that the share price has fallen sharply.",
+    low: "A low or 0% yield is typical for growth companies reinvesting profits into the business rather than paying them out.",
+    sector: "Utilities, REITs, and energy majors often yield 3–6% as a core part of their investment case. Tech and biotech growth companies frequently pay 0%, since investors there are betting on price appreciation, not income.",
+  },
+  beta: {
+    what: "Beta: how much a stock's price tends to move relative to the overall market. 1.0 = moves with the market.",
+    formula: "Beta = Covariance(Stock Return, Market Return) ÷ Variance(Market Return)",
+    high: "Above 1.0 means the stock tends to swing more than the market — bigger gains in rallies, bigger losses in downturns.",
+    low: "Below 1.0 means the stock tends to be more stable than the market — smoother ride, typically less dramatic upside too.",
+    sector: "Consumer staples and utilities often have beta well below 1 (people buy groceries and electricity in any economy). Tech, small-caps, and crypto-adjacent names often run beta above 1.5.",
+  },
+  marketCap: {
+    what: "Market Capitalization: total value of all outstanding shares (share price × shares outstanding). Used to gauge company size.",
+    formula: "Market Cap = Share Price × Shares Outstanding",
+    high: "Large-cap companies are generally more established and stable, though often with slower growth potential than smaller companies.",
+    low: "Small-cap companies can offer more growth potential but typically come with more volatility and risk.",
+    sector: "\"Large\" is relative to the sector — a $50B market cap is enormous for regional banking but mid-sized for big tech, where the largest names exceed $2 trillion.",
+  },
+  sharesOutstanding: {
+    what: "Shares Outstanding: the total number of shares of the company currently held by all shareholders, in millions.",
+    formula: "A direct count, not a calculated ratio — reported by the company.",
+    high: "A large share count spreads earnings across more shares (lower EPS for the same profit) — size alone isn't good or bad, just context for per-share numbers.",
+    low: "A small share count concentrates earnings per share, but also means each share represents a bigger slice of the company.",
+    sector: "Share count conventions vary a lot by company history (stock splits, buybacks) more than by sector — always read this alongside EPS and market cap rather than on its own.",
+  },
+  fiftyTwoWeekHigh: {
+    what: "52-Week High: the highest price the stock has traded at over the past year.",
+    formula: "The highest daily trade price observed in the trailing 52 weeks — a direct historical record, not a calculation.",
+    high: "Trading near its 52-week high can reflect strong momentum and investor confidence — or that the stock has become expensive relative to its recent history.",
+    low: "N/A — this figure IS the high point, so there's no separate 'low' reading for it.",
+    sector: "How meaningful the 52-week high is depends on the stock's typical volatility — a small-cap or crypto-adjacent stock revisiting its high means less than a blue-chip utility doing the same.",
+  },
+  fiftyTwoWeekLow: {
+    what: "52-Week Low: the lowest price the stock has traded at over the past year.",
+    formula: "The lowest daily trade price observed in the trailing 52 weeks — a direct historical record, not a calculation.",
+    high: "N/A — this figure IS the low point, so there's no separate 'high' reading for it.",
+    low: "Trading near its 52-week low can mean the market has soured on the company — or that it's a potential value opportunity, depending on why it fell.",
+    sector: "Cyclical sectors (energy, industrials, semiconductors) often swing between 52-week highs and lows as commodity prices or demand cycles shift — that alone isn't as alarming as the same swing in a defensive sector like utilities.",
+  },
+  grossMargin: {
+    what: "Gross Margin: (revenue − cost of goods sold) ÷ revenue. Profit left after direct production costs, before overhead, marketing, R&D, etc.",
+    formula: "Gross Margin = (Revenue − Cost of Goods Sold) ÷ Revenue",
+    high: "A high gross margin suggests pricing power or a low-cost product (common in software) — more room to absorb overhead and still turn a profit.",
+    low: "A low gross margin is typical of businesses with heavy production costs (e.g. retail, manufacturing) and leaves less room for error on overhead.",
+    sector: "Software/SaaS often runs 70–90% gross margin (the marginal cost of another customer is tiny). Grocery retail often runs 20–30%. Neither is \"bad\" — they're just structurally different businesses.",
+  },
+  netMargin: {
+    what: "Net Profit Margin: net income divided by revenue. How much of every dollar in sales becomes actual profit after ALL expenses.",
+    formula: "Net Margin = Net Income ÷ Revenue",
+    high: "A high net margin means the company keeps a large share of revenue as profit — generally efficient and financially healthy.",
+    low: "A low or negative net margin means most (or all) revenue is being consumed by costs — worth understanding why (growth investment vs. structural weakness).",
+    sector: "Software and financial services often post net margins of 20–30%+. Grocery and airline businesses often run on razor-thin margins of 2–5% even when healthy — it's simply a volume-driven, low-margin business model.",
+  },
+  operatingMargin: {
+    what: "Operating Margin: operating income (profit from core business operations, before interest and taxes) divided by revenue.",
+    formula: "Operating Margin = Operating Income ÷ Revenue",
+    high: "A high operating margin means the core business itself is efficient, independent of financing or tax decisions.",
+    low: "A low operating margin means running the core business consumes most of the revenue, leaving little cushion before interest and taxes.",
+    sector: "Software often runs operating margins of 25–40%. Retail and restaurants are often in the 5–10% range even when performing well — again, a structural difference between business models, not just execution.",
+  },
+  evEbitda: {
+    what: "EV/EBITDA: Enterprise Value (market cap + debt − cash) divided by EBITDA (earnings before interest, taxes, depreciation & amortization). A valuation measure often used to compare companies with different debt levels.",
+    formula: "EV/EBITDA = (Market Cap + Total Debt − Cash) ÷ EBITDA",
+    high: "A high multiple suggests the market is pricing in strong future growth, or that the company is expensive relative to its current cash-generating ability.",
+    low: "A low multiple can suggest undervaluation, or reflect market skepticism about the durability of current earnings.",
+    sector: "Typical \"fair value\" ranges vary a lot: mature industrials/utilities often trade around 8–12x, while high-growth tech and healthcare can run 20x or considerably higher.",
+  },
+  evRevenue: {
+    what: "EV/Revenue: Enterprise Value divided by total revenue. Used especially for early-stage or unprofitable companies where earnings-based multiples (like P/E) don't work.",
+    formula: "EV/Revenue = (Market Cap + Total Debt − Cash) ÷ Revenue",
+    high: "A high multiple means the market is paying a lot for each dollar of current sales, usually reflecting expectations of fast future growth.",
+    low: "A low multiple suggests the market isn't paying much of a growth premium for the company's revenue.",
+    sector: "High-margin software companies can command EV/Revenue of 8–15x+ since each new dollar of revenue is very profitable. Low-margin sectors like retail or distribution are often valued closer to 0.5–2x revenue.",
+  },
+  revenueGrowth: {
+    what: "Revenue Growth (year-over-year): how much the company's total sales grew compared to the same period last year.",
+    formula: "Revenue Growth = (This Period Revenue − Same Period Last Year) ÷ Same Period Last Year",
+    high: "Strong revenue growth suggests rising demand for the company's products or services, or successful expansion/pricing power.",
+    low: "Flat or negative revenue growth can signal market saturation, competitive pressure, or a broader slowdown — worth checking whether it's company-specific or industry-wide.",
+    sector: "Mature sectors like utilities or consumer staples often grow revenue in the low single digits even when perfectly healthy. Growth-stage tech companies are often expected to grow 20–40%+ per year to justify their valuations.",
+  },
+  epsGrowth: {
+    what: "EPS Growth (year-over-year): how much earnings per share grew compared to the same period last year.",
+    formula: "EPS Growth = (This Period EPS − Same Period Last Year) ÷ Same Period Last Year",
+    high: "Strong EPS growth means profitability is scaling, whether through revenue growth, margin improvement, or share buybacks reducing the share count.",
+    low: "Flat or negative EPS growth can signal margin pressure, rising costs, or a shrinking business — worth checking which.",
+    sector: "Cyclical sectors (energy, semiconductors) can show wild EPS growth swings tied to commodity or demand cycles — a single strong or weak year means less there than in a steadier sector like consumer staples.",
+  },
+  dividendPerShare: {
+    what: "Dividend Per Share: the total dollar amount paid out in dividends per share over the trailing year.",
+    formula: "Dividend Per Share = Total Dividends Paid ÷ Shares Outstanding",
+    high: "A higher (and ideally growing) dividend per share reflects a company returning more cash directly to shareholders.",
+    low: "A low or $0 dividend per share is standard for companies reinvesting profits into growth rather than paying shareholders directly.",
+    sector: "Only meaningful in context of share price (see Dividend Yield) and sector norms — utilities and REITs are expected to pay consistently, while tech growth companies typically pay little or nothing.",
+  },
+  dividendGrowth5Y: {
+    what: "5-Year Dividend Growth Rate: how much the dividend payment has grown, on average, per year over the last 5 years.",
+    formula: "5Y Growth Rate = (Current Dividend ÷ Dividend 5 Years Ago)^(1/5) − 1",
+    high: "Consistent dividend growth is often read as a sign of confidence from management in future cash flow, and is prized by income-focused investors.",
+    low: "A flat or shrinking dividend can signal financial strain, or simply a company that prioritizes reinvestment/buybacks over dividend growth.",
+    sector: "Consumer staples and utilities are famous for decades-long streaks of steady dividend growth. It's much less common (and less expected) in cyclical or capital-intensive sectors like energy or airlines.",
+  },
+  ytdReturn: {
+    what: "Year-to-Date Price Return: how much the stock's price has changed since the start of the calendar year, in percent.",
+    formula: "YTD Return = (Current Price − Price on Jan 1) ÷ Price on Jan 1",
+    high: "Strong YTD performance shows the stock has been in favor with the market this year — momentum, but not a guarantee it continues.",
+    low: "Weak or negative YTD performance shows the stock has lagged this year — could reflect company-specific issues or a broader sector rotation away from it.",
+    sector: "Always worth comparing to how the stock's own sector did over the same period — a stock down 5% YTD while its sector is down 15% is actually outperforming.",
+  },
+  week52Return: {
+    what: "52-Week Price Return: how much the stock's price has changed over the trailing 12 months, in percent.",
+    formula: "52-Week Return = (Current Price − Price 52 Weeks Ago) ÷ Price 52 Weeks Ago",
+    high: "A strong 1-year return reflects sustained investor demand over a longer window than YTD alone.",
+    low: "A weak or negative 1-year return suggests the market has been cooling on the stock for a sustained period, not just a short-term dip.",
+    sector: "Compare against a sector ETF or index over the same period where possible — an individual stock's return means more relative to its peers than in isolation.",
+  },
+  priceVsSP500: {
+    what: "Price Performance vs. S&P 500 (13-week): how the stock's price return compares to the S&P 500 index's return over the same recent period, in percentage points.",
+    formula: "Relative Performance = Stock's 13-Week Return − S&P 500's 13-Week Return",
+    high: "A positive number means the stock has been outperforming the broader market recently — relative strength.",
+    low: "A negative number means the stock has been lagging the broader market recently — relative weakness.",
+    sector: "Useful as a quick momentum/relative-strength check, but short 13-week windows can be noisy — a single earnings report or news event can swing this significantly either way.",
+  },
+  recommendation: {
+    what: "Analyst Recommendation Trends: how Wall Street analysts covering this stock are currently rated — strong buy, buy, hold, sell, or strong sell. These come from equity research analysts at brokerages and investment banks who cover the stock professionally, aggregated here from their published research (not from retail investor sentiment or this dashboard's own view).",
+    formula: "A tally of analyst ratings, not a calculated ratio.",
+    high: "A high share of Buy/Strong Buy ratings means analysts are broadly optimistic about the stock's prospects.",
+    low: "A high share of Sell/Strong Sell ratings, or a shrinking Buy count over time, means analysts are broadly pessimistic.",
+    sector: "Coverage depth varies a lot by sector and company size — a heavily-covered mega-cap might have 40+ analysts weighing in, while a small-cap might have only 2–3, making each individual rating carry more weight.",
+  },
+  fiftyTwoWeekRangeContext: {
+    what: "Why the 52-week range matters: it's the simplest available gauge of how volatile the stock has been, and where today's price sits within its own recent trading history. Many traders also watch the exact high/low as psychological levels — round numbers or prior extremes where buying/selling has clustered before.",
+    formula: "Not a calculation — it's just today's price mapped onto the (52-week low, 52-week high) range.",
+    high: "Sitting near the high end suggests recent strength/momentum, and re-testing the exact 52-week high specifically is a level some traders watch for a potential breakout (or rejection).",
+    low: "Sitting near the low end suggests recent weakness, and re-testing the exact 52-week low is a level some traders watch as either a bounce point or a breakdown.",
+    sector: "A narrow 52-week range (low volatility) is typical for utilities/staples; a wide range is typical for small-caps, biotech, or crypto-adjacent names — so \"near the high\" or \"near the low\" carries different weight depending on how volatile the stock normally is.",
+  },
+  rsi: {
+    what: "Relative Strength Index (RSI): a momentum indicator (0–100) measuring the speed and size of recent price changes, to gauge whether a stock has moved unusually far, unusually fast.",
+    formula: "RSI = 100 − [100 ÷ (1 + Average Gain ÷ Average Loss)], over the last 14 periods.",
+    high: "Above 70 is traditionally read as \"overbought\" — the stock has risen a lot recently, which some traders read as due for a pause or pullback (though strong trends can stay overbought for a long time).",
+    low: "Below 30 is traditionally read as \"oversold\" — the stock has fallen a lot recently, which some traders read as due for a bounce (though strong downtrends can stay oversold for a long time).",
+    sector: "Fast-moving, higher-beta stocks (small-caps, momentum tech, crypto) swing between overbought/oversold far more often than slow, defensive stocks (utilities, staples) — treat the 70/30 lines as looser guides for volatile names.",
+  },
+  macd: {
+    what: "Moving Average Convergence Divergence (MACD): compares a faster and slower moving average of price to gauge momentum and trend changes. The histogram shows the gap between the MACD line and its own signal line.",
+    formula: "MACD Line = 12-period EMA − 26-period EMA. Signal Line = 9-period EMA of the MACD Line. Histogram = MACD Line − Signal Line.",
+    high: "MACD crossing above its signal line (positive, growing histogram) is traditionally read as bullish momentum building.",
+    low: "MACD crossing below its signal line (negative, growing histogram) is traditionally read as bearish momentum building.",
+    sector: "Like RSI, MACD crossovers happen more often and less meaningfully on volatile stocks — on a slow-moving utility a crossover carries more weight than the same signal on a fast-moving small-cap.",
+  },
+  sharesBreakdown: {
+    what: "Three different ways to count a company's shares: Total Shares Outstanding (everything issued), Public Float (the subset actually available for anyone to buy/sell — excludes shares held by insiders, the company itself, or otherwise restricted), and Diluted Shares (what the count WOULD be if every outstanding option/RSU/convertible security were exercised).",
+    formula: "Float = Total Shares Outstanding − Closely-Held/Restricted Shares. Diluted ≥ Basic, always.",
+    high: "A high float relative to total shares means more of the company genuinely trades freely — usually more liquidity, tighter bid/ask spreads, and price moves that reflect broad market activity rather than a few large holders.",
+    low: "A low float (lots of shares closely held by insiders/institutions) can mean thinner trading and bigger price swings on relatively small buy/sell orders — small-float stocks are notoriously more volatile and easier to move.",
+    sector: "Newly-IPO'd companies and founder-controlled companies (common in tech) often have low float relative to total shares for years after going public. Diluted vs. basic share gaps tend to be widest at growth-stage tech companies that pay employees heavily in stock options/RSUs — a big gap there is normal, not a red flag by itself, but it does mean per-share metrics (EPS, etc.) will shrink somewhat as those options get exercised over time.",
+  },
+  earningsSurprise: {
+    what: "Earnings Surprise: the difference between what the company actually earned per share and what analysts had estimated, for each recent quarter.",
+    formula: "Surprise % = (Actual EPS − Estimate EPS) ÷ |Estimate EPS|",
+    high: "Consistently beating estimates (positive surprise) is often taken as a sign of conservative guidance or genuine outperformance, and tends to be rewarded by the market.",
+    low: "Consistently missing estimates (negative surprise) can signal operational trouble or overly optimistic analyst expectations, and tends to be punished by the market.",
+    sector: "Some sectors (e.g. mega-cap tech) are famous for a culture of conservative guidance and frequent small beats — a single miss there can be read very differently than the same miss in a sector with less predictable analyst modeling, like biotech.",
+  },
+};

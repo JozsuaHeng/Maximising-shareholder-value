@@ -1,0 +1,653 @@
+// Interactive price chart: axes, range switching, session shading,
+// synced hover crosshair across all panels, SMA/EMA overlays, and simple
+// technical-analysis panels (volume, RSI, MACD, support/resistance).
+//
+// Data comes from Twelve Data (see config.js / README.md — Finnhub's free
+// plan blocks historical candles). Each range button maps to a Twelve Data
+// interval chosen to give a sensible number of bars for that window.
+//
+// Twelve Data's free tier does NOT return pre-market/after-hours bars even
+// with `extended_hours=true` (confirmed directly — identical output with
+// or without the parameter). So the session shading marks WHEN pre-market/
+// after-hours occur (useful context, e.g. explaining the gap in the line
+// overnight) even though there's no price data to show inside those bands.
+//
+// RSI/MACD/SMA/EMA computed client-side with standard formulas;
+// support/resistance is a simple local-extrema clustering heuristic,
+// explicitly labeled as such, not authoritative.
+
+const RANGE_CONFIGS = {
+  "1D": { interval: "5min", outputsize: 80 },
+  "1H": { interval: "1h", outputsize: 100 },
+  "4H": { interval: "4h", outputsize: 100 },
+  "1W": { interval: "30min", outputsize: 90 },
+  "1M": { interval: "1day", outputsize: 22 },
+  "6M": { interval: "1day", outputsize: 130 },
+  "1Y": { interval: "1day", outputsize: 252 },
+};
+
+const PAD_LEFT = 56;
+const PAD_RIGHT = 10;
+
+const chartState = {
+  symbol: null,
+  range: "6M",
+  cache: {},
+  series: null,
+  sr: null,
+  overlays: { sma20: true, sma50: false, ema20: true },
+};
+
+function chartIsNum(v) {
+  return typeof v === "number" && !Number.isNaN(v);
+}
+
+function chartFormatCurrency(v) {
+  return chartIsNum(v) ? `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A";
+}
+
+function parseNaiveTime(dateTimeStr) {
+  return new Date(dateTimeStr.replace(" ", "T")).getTime();
+}
+
+// ---- DOM refs ----
+const chartRangeRow = document.getElementById("chartRangeRow");
+const chartOverlayRow = document.getElementById("chartOverlayRow");
+const chartWrap = document.getElementById("chartWrap");
+const priceChartEl = document.getElementById("priceChart");
+const chartTooltipEl = document.getElementById("chartTooltip");
+const volumeChartEl = document.getElementById("volumeChart");
+const rsiChartEl = document.getElementById("rsiChart");
+const macdChartEl = document.getElementById("macdChart");
+const chartNoteEl = document.getElementById("chartNote");
+const srNoteEl = document.getElementById("srNote");
+
+Array.from(chartRangeRow.querySelectorAll("button")).forEach(btn => {
+  btn.addEventListener("click", () => {
+    Array.from(chartRangeRow.querySelectorAll("button")).forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    chartState.range = btn.dataset.range;
+    loadChartRange();
+  });
+});
+
+Array.from(chartOverlayRow.querySelectorAll("button")).forEach(btn => {
+  const key = btn.dataset.overlay;
+  btn.classList.toggle("active", chartState.overlays[key]);
+  btn.addEventListener("click", () => {
+    chartState.overlays[key] = !chartState.overlays[key];
+    btn.classList.toggle("active", chartState.overlays[key]);
+    if (chartState.series) renderAllPanels(chartState.series);
+  });
+});
+
+window.addEventListener("resize", debounce(() => {
+  if (chartState.series) renderAllPanels(chartState.series);
+}, 200));
+
+function debounce(fn, wait) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// ---- Public entry point (called from script.js after a ticker loads) ----
+function initChart(symbol) {
+  chartState.symbol = symbol;
+  chartState.cache = {};
+  chartState.series = null;
+  Array.from(chartRangeRow.querySelectorAll("button")).forEach(b => b.classList.toggle("active", b.dataset.range === chartState.range));
+
+  const exotic = symbol.includes(":");
+  chartRangeRow.classList.toggle("hidden", exotic);
+  chartOverlayRow.classList.toggle("hidden", exotic);
+
+  if (exotic) {
+    showChartUnavailable("Charts currently only support plain ticker symbols (stocks/ETFs) — this symbol's format isn't supported yet.");
+    return;
+  }
+  if (typeof TWELVE_DATA_API_KEY === "undefined" || !TWELVE_DATA_API_KEY || TWELVE_DATA_API_KEY === "YOUR_TWELVE_DATA_KEY_HERE") {
+    showChartUnavailable("Add a free Twelve Data API key to config.js to enable price charts (Finnhub's free plan doesn't include them). See README.md.");
+    return;
+  }
+
+  loadChartRange();
+}
+
+async function loadChartRange() {
+  const symbol = chartState.symbol;
+  const range = chartState.range;
+  const cacheKey = `${symbol}:${range}`;
+
+  if (chartState.cache[cacheKey]) {
+    chartState.series = chartState.cache[cacheKey];
+    renderAllPanels(chartState.series);
+    return;
+  }
+
+  const { interval, outputsize } = RANGE_CONFIGS[range];
+  try {
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data || data.status === "error" || !Array.isArray(data.values) || data.values.length < 2) {
+      showChartUnavailable("Price data isn't available for this symbol/range right now.");
+      return;
+    }
+    const values = [...data.values].reverse();
+    const series = {
+      times: values.map(v => v.datetime),
+      timesMs: values.map(v => parseNaiveTime(v.datetime)),
+      opens: values.map(v => parseFloat(v.open)),
+      highs: values.map(v => parseFloat(v.high)),
+      lows: values.map(v => parseFloat(v.low)),
+      closes: values.map(v => parseFloat(v.close)),
+      volumes: values.map(v => parseFloat(v.volume) || 0),
+      intraday: interval !== "1day",
+    };
+    chartState.cache[cacheKey] = series;
+    chartState.series = series;
+    renderAllPanels(series);
+  } catch {
+    showChartUnavailable("Something went wrong loading chart data.");
+  }
+}
+
+function showChartUnavailable(message) {
+  chartState.series = null;
+  chartNoteEl.textContent = message;
+  chartNoteEl.classList.remove("hidden");
+  chartWrap.classList.add("hidden");
+  volumeChartEl.parentElement.classList.add("hidden");
+  rsiChartEl.parentElement.classList.add("hidden");
+  macdChartEl.parentElement.classList.add("hidden");
+  srNoteEl.textContent = "";
+}
+
+// ---- Shared x-axis mapping ----
+// Intraday: time-proportional (so overnight/closed gaps show as a visual
+// jump, like real trading charts). Daily bars: index-proportional (the
+// convention for daily+ charts — weekends don't get empty space).
+function getXMapper(series, plotW) {
+  if (series.intraday) {
+    const minT = series.timesMs[0];
+    const maxT = series.timesMs[series.timesMs.length - 1];
+    const span = maxT - minT || 1;
+    return {
+      xFor: i => PAD_LEFT + ((series.timesMs[i] - minT) / span) * plotW,
+      xForTime: t => PAD_LEFT + ((t - minT) / span) * plotW,
+      minT, maxT,
+      indexForX: mouseX => {
+        const targetT = minT + ((mouseX - PAD_LEFT) / plotW) * span;
+        let closest = 0, closestDist = Infinity;
+        for (let i = 0; i < series.timesMs.length; i++) {
+          const d = Math.abs(series.timesMs[i] - targetT);
+          if (d < closestDist) { closestDist = d; closest = i; }
+        }
+        return closest;
+      },
+    };
+  }
+  const n = series.closes.length;
+  return {
+    xFor: i => PAD_LEFT + (i / (n - 1)) * plotW,
+    xForTime: null,
+    minT: null, maxT: null,
+    indexForX: mouseX => Math.round(((mouseX - PAD_LEFT) / plotW) * (n - 1)),
+  };
+}
+
+// ---- Session shading (pre-market / regular / after-hours) ----
+function drawSessionShading(ctx, series, xmap, padTop, plotH) {
+  if (!series.intraday || !xmap.xForTime) return;
+
+  const dateSet = new Set(series.times.map(t => t.slice(0, 10)));
+  dateSet.forEach(dateStr => {
+    const preStart = parseNaiveTime(`${dateStr} 04:00:00`);
+    const regStart = parseNaiveTime(`${dateStr} 09:30:00`);
+    const regEnd = parseNaiveTime(`${dateStr} 16:00:00`);
+    const afterEnd = parseNaiveTime(`${dateStr} 20:00:00`);
+
+    const drawBand = (t0, t1, color) => {
+      const from = Math.max(t0, xmap.minT);
+      const to = Math.min(t1, xmap.maxT);
+      if (from >= to) return;
+      const x0 = xmap.xForTime(from);
+      const x1 = xmap.xForTime(to);
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, padTop, Math.max(x1 - x0, 0), plotH);
+    };
+
+    drawBand(preStart, regStart, "rgba(224,171,46,0.07)"); // pre-market: soft amber
+    drawBand(regEnd, afterEnd, "rgba(140,160,200,0.08)"); // after-hours: soft blue-grey
+  });
+}
+
+// ---- Moving averages ----
+function computeSMA(values, period) {
+  const sma = new Array(values.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= period) sum -= values[i - period];
+    if (i >= period - 1) sma[i] = sum / period;
+  }
+  return sma;
+}
+
+function renderAllPanels(series, hoverIdx) {
+  chartNoteEl.classList.add("hidden");
+  chartWrap.classList.remove("hidden");
+  volumeChartEl.parentElement.classList.remove("hidden");
+  rsiChartEl.parentElement.classList.remove("hidden");
+  macdChartEl.parentElement.classList.remove("hidden");
+
+  const sr = computeSupportResistance(series.closes);
+  chartState.sr = sr;
+  renderPricePanel(series, sr, hoverIdx);
+  renderVolumePanel(series, hoverIdx);
+  renderRSIPanel(series, hoverIdx);
+  renderMACDPanel(series, hoverIdx);
+
+  if (sr.support.length === 0 && sr.resistance.length === 0) {
+    srNoteEl.textContent = "Not enough swing points in this range to estimate support/resistance levels.";
+  } else {
+    const parts = [];
+    if (sr.resistance.length) parts.push(`Resistance ~${sr.resistance.map(chartFormatCurrency).join(", ")}`);
+    if (sr.support.length) parts.push(`Support ~${sr.support.map(chartFormatCurrency).join(", ")}`);
+    srNoteEl.textContent = `${parts.join(" · ")} — simple levels based on where price has repeatedly turned in this range, not a guarantee it holds again.`;
+  }
+}
+
+// ---- Canvas setup (crisp on any screen size / device pixel ratio) ----
+function setupCanvas(canvas) {
+  const cssWidth = canvas.parentElement.clientWidth;
+  const cssHeight = parseInt(canvas.dataset.cssHeight || canvas.getAttribute("height"), 10);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssHeight}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: cssWidth, h: cssHeight };
+}
+
+function niceTicks(min, max, count) {
+  if (min === max) { min -= 1; max += 1; }
+  const step = (max - min) / count;
+  return Array.from({ length: count + 1 }, (_, i) => min + step * i);
+}
+
+function formatChartDate(iso, intraday) {
+  const d = new Date(iso.replace(" ", "T"));
+  if (intraday) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function drawHoverLine(ctx, x, padTop, plotH) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  ctx.moveTo(x, padTop);
+  ctx.lineTo(x, padTop + plotH);
+  ctx.strokeStyle = "rgba(160,170,170,0.5)";
+  ctx.stroke();
+  ctx.restore();
+}
+
+function attachHover(canvas, series, plotW) {
+  const xmap = getXMapper(series, plotW);
+  canvas.onmousemove = e => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const idx = xmap.indexForX(mouseX);
+    if (idx < 0 || idx >= series.closes.length) { chartTooltipEl.classList.add("hidden"); return; }
+    renderAllPanels(series, idx);
+  };
+  canvas.onmouseleave = () => {
+    chartTooltipEl.classList.add("hidden");
+    renderAllPanels(series, null);
+  };
+}
+
+// ---- Price panel (axes, gridlines, session shading, overlays, S/R, hover) ----
+function renderPricePanel(series, sr, hoverIdx) {
+  const { ctx, w, h } = setupCanvas(priceChartEl);
+  ctx.clearRect(0, 0, w, h);
+
+  const padTop = 10, padBottom = 24;
+  const plotW = w - PAD_LEFT - PAD_RIGHT;
+  const plotH = h - padTop - padBottom;
+  const xmap = getXMapper(series, plotW);
+  const { closes, times } = series;
+
+  const overlayValues = [];
+  if (chartState.overlays.sma20) overlayValues.push(...computeSMA(closes, 20).filter(chartIsNum));
+  if (chartState.overlays.sma50) overlayValues.push(...computeSMA(closes, 50).filter(chartIsNum));
+  if (chartState.overlays.ema20) overlayValues.push(...computeEMA(closes, 20).filter(chartIsNum));
+
+  const allLevels = [...closes, ...sr.support, ...sr.resistance, ...overlayValues];
+  const min = Math.min(...allLevels);
+  const max = Math.max(...allLevels);
+  const yFor = price => padTop + plotH - ((price - min) / (max - min || 1)) * plotH;
+
+  // session shading (drawn first, underneath everything)
+  drawSessionShading(ctx, series, xmap, padTop, plotH);
+
+  // gridlines + y-axis labels
+  const ticks = niceTicks(min, max, 4);
+  ctx.strokeStyle = "rgba(140,160,160,0.15)";
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text-muted").trim() || "#7d818d";
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.textBaseline = "middle";
+  ticks.forEach(t => {
+    const y = yFor(t);
+    ctx.beginPath();
+    ctx.moveTo(PAD_LEFT, y);
+    ctx.lineTo(w - PAD_RIGHT, y);
+    ctx.stroke();
+    ctx.fillText(chartFormatCurrency(t), 4, y);
+  });
+
+  // x-axis labels
+  const xLabelCount = Math.min(5, times.length);
+  ctx.textBaseline = "top";
+  for (let i = 0; i < xLabelCount; i++) {
+    const idx = Math.round((i / (xLabelCount - 1 || 1)) * (times.length - 1));
+    ctx.fillText(formatChartDate(times[idx], series.intraday), xmap.xFor(idx) - 14, h - padBottom + 6);
+  }
+
+  // support/resistance lines
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  sr.resistance.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-critical")));
+  sr.support.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-good")));
+
+  // price line + area fill
+  const trendUp = closes[closes.length - 1] >= closes[0];
+  const lineColor = trendUp ? "#1baf7a" : "#d03b3b";
+  ctx.beginPath();
+  closes.forEach((price, i) => {
+    const x = xmap.xFor(i), y = yFor(price);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.lineTo(xmap.xFor(closes.length - 1), padTop + plotH);
+  ctx.lineTo(xmap.xFor(0), padTop + plotH);
+  ctx.closePath();
+  const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
+  gradient.addColorStop(0, trendUp ? "rgba(27,175,122,0.18)" : "rgba(208,59,59,0.18)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // overlays: SMA20 / SMA50 / EMA20
+  const drawOverlay = (values, color) => {
+    ctx.beginPath();
+    let started = false;
+    values.forEach((v, i) => {
+      if (!chartIsNum(v)) return;
+      const x = xmap.xFor(i), y = yFor(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  };
+  if (chartState.overlays.sma20) drawOverlay(computeSMA(closes, 20), "#e0ab2e");
+  if (chartState.overlays.sma50) drawOverlay(computeSMA(closes, 50), "#7ea0ff");
+  if (chartState.overlays.ema20) drawOverlay(computeEMA(closes, 20), "#e66767");
+
+  // hover crosshair + tooltip
+  if (chartIsNum(hoverIdx)) {
+    const x = xmap.xFor(hoverIdx), y = yFor(closes[hoverIdx]);
+    drawHoverLine(ctx, x, padTop, plotH);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+
+    chartTooltipEl.textContent = `${formatChartDate(times[hoverIdx], series.intraday)} · ${chartFormatCurrency(closes[hoverIdx])}`;
+    chartTooltipEl.classList.remove("hidden");
+    const left = Math.min(Math.max(x - 50, 0), w - 120);
+    chartTooltipEl.style.left = `${left}px`;
+    chartTooltipEl.style.top = `${Math.max(y - 34, 0)}px`;
+  } else {
+    chartTooltipEl.classList.add("hidden");
+  }
+
+  attachHover(priceChartEl, series, plotW);
+}
+
+function drawLevelLine(ctx, level, yFor, xStart, xEnd, color) {
+  const y = yFor(level);
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(xStart, y);
+  ctx.lineTo(xEnd, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ---- Volume panel ----
+function renderVolumePanel(series, hoverIdx) {
+  const { ctx, w, h } = setupCanvas(volumeChartEl);
+  ctx.clearRect(0, 0, w, h);
+  const { volumes, closes } = series;
+  const plotW = w - PAD_LEFT - PAD_RIGHT;
+  const xmap = getXMapper(series, plotW);
+  const max = Math.max(...volumes, 1);
+  const barW = Math.max(plotW / volumes.length, 1);
+
+  volumes.forEach((v, i) => {
+    const barH = (v / max) * (h - 4);
+    const up = i === 0 || closes[i] >= closes[i - 1];
+    ctx.fillStyle = up ? "rgba(27,175,122,0.55)" : "rgba(208,59,59,0.55)";
+    ctx.fillRect(xmap.xFor(i) - barW / 2, h - barH, Math.max(barW - 1, 1), barH);
+  });
+
+  if (chartIsNum(hoverIdx)) {
+    const x = xmap.xFor(hoverIdx);
+    drawHoverLine(ctx, x, 0, h);
+    drawPanelReadout(ctx, w, `Vol ${formatVolume(volumes[hoverIdx])}`);
+  }
+
+  attachHover(volumeChartEl, series, plotW);
+}
+
+function formatVolume(v) {
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return `${v}`;
+}
+
+function drawPanelReadout(ctx, w, text) {
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#fff";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText(text, w - 4, 2);
+  ctx.textAlign = "left";
+}
+
+// ---- RSI panel ----
+function computeRSI(closes, period = 14) {
+  const rsi = new Array(closes.length).fill(null);
+  if (closes.length <= period) return rsi;
+  let gainSum = 0, lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gainSum += diff; else lossSum -= diff;
+  }
+  let avgGain = gainSum / period, avgLoss = lossSum / period;
+  rsi[period] = 100 - 100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss));
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi[i] = 100 - 100 / (1 + rs);
+  }
+  return rsi;
+}
+
+function renderRSIPanel(series, hoverIdx) {
+  const { ctx, w, h } = setupCanvas(rsiChartEl);
+  ctx.clearRect(0, 0, w, h);
+  const rsi = computeRSI(series.closes, 14);
+  const plotW = w - PAD_LEFT - PAD_RIGHT;
+  const xmap = getXMapper(series, plotW);
+  const padTop = 6, padBottom = 6;
+  const plotH = h - padTop - padBottom;
+  const yFor = v => padTop + plotH - (v / 100) * plotH;
+
+  [30, 50, 70].forEach(level => {
+    ctx.beginPath();
+    ctx.strokeStyle = level === 50 ? "rgba(140,160,160,0.15)" : "rgba(140,160,160,0.25)";
+    ctx.setLineDash(level === 50 ? [] : [3, 3]);
+    ctx.moveTo(PAD_LEFT, yFor(level));
+    ctx.lineTo(w - PAD_RIGHT, yFor(level));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  ctx.beginPath();
+  let started = false;
+  rsi.forEach((v, i) => {
+    if (v === null) return;
+    const x = xmap.xFor(i), y = yFor(v);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = "#1baf7a";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  if (chartIsNum(hoverIdx)) {
+    drawHoverLine(ctx, xmap.xFor(hoverIdx), 0, h);
+    const v = rsi[hoverIdx];
+    drawPanelReadout(ctx, w, chartIsNum(v) ? `RSI ${v.toFixed(1)}` : "RSI --");
+  }
+
+  attachHover(rsiChartEl, series, plotW);
+}
+
+// ---- MACD panel ----
+function computeEMA(values, period) {
+  const k = 2 / (period + 1);
+  const ema = new Array(values.length).fill(null);
+  let prev = null;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] === null || values[i] === undefined) continue;
+    prev = prev === null ? values[i] : values[i] * k + prev * (1 - k);
+    ema[i] = prev;
+  }
+  return ema;
+}
+
+function computeMACD(closes) {
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const macdLine = closes.map((_, i) => (chartIsNum(ema12[i]) && chartIsNum(ema26[i])) ? ema12[i] - ema26[i] : null);
+  const signalLine = computeEMA(macdLine, 9);
+  const histogram = macdLine.map((v, i) => (chartIsNum(v) && chartIsNum(signalLine[i])) ? v - signalLine[i] : null);
+  return { macdLine, signalLine, histogram };
+}
+
+function renderMACDPanel(series, hoverIdx) {
+  const { ctx, w, h } = setupCanvas(macdChartEl);
+  ctx.clearRect(0, 0, w, h);
+  const { macdLine, signalLine, histogram } = computeMACD(series.closes);
+  const plotW = w - PAD_LEFT - PAD_RIGHT;
+  const xmap = getXMapper(series, plotW);
+
+  const values = [...macdLine, ...signalLine, ...histogram].filter(chartIsNum);
+  if (values.length === 0) return;
+  const max = Math.max(...values.map(Math.abs), 0.01);
+  const padTop = 6, padBottom = 6;
+  const plotH = h - padTop - padBottom;
+  const mid = padTop + plotH / 2;
+  const yFor = v => mid - (v / max) * (plotH / 2);
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(140,160,160,0.2)";
+  ctx.moveTo(PAD_LEFT, mid);
+  ctx.lineTo(w - PAD_RIGHT, mid);
+  ctx.stroke();
+
+  const barW = Math.max(plotW / histogram.length, 1);
+  histogram.forEach((v, i) => {
+    if (!chartIsNum(v)) return;
+    const y0 = yFor(0), y1 = yFor(v);
+    ctx.fillStyle = v >= 0 ? "rgba(27,175,122,0.5)" : "rgba(208,59,59,0.5)";
+    ctx.fillRect(xmap.xFor(i) - barW / 2, Math.min(y0, y1), Math.max(barW - 1, 1), Math.abs(y1 - y0));
+  });
+
+  const drawLine = (arr, color) => {
+    ctx.beginPath();
+    let started = false;
+    arr.forEach((v, i) => {
+      if (!chartIsNum(v)) return;
+      const x = xmap.xFor(i), y = yFor(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  };
+  drawLine(macdLine, "#1baf7a");
+  drawLine(signalLine, "#e0ab2e");
+
+  if (chartIsNum(hoverIdx)) {
+    drawHoverLine(ctx, xmap.xFor(hoverIdx), 0, h);
+    const v = macdLine[hoverIdx];
+    drawPanelReadout(ctx, w, chartIsNum(v) ? `MACD ${v.toFixed(2)}` : "MACD --");
+  }
+
+  attachHover(macdChartEl, series, plotW);
+}
+
+// ---- Simple support/resistance ----
+function findPivots(closes, window = 4) {
+  const highs = [], lows = [];
+  for (let i = window; i < closes.length - window; i++) {
+    const slice = closes.slice(i - window, i + window + 1);
+    if (closes[i] === Math.max(...slice)) highs.push(closes[i]);
+    if (closes[i] === Math.min(...slice)) lows.push(closes[i]);
+  }
+  return { highs, lows };
+}
+
+function clusterLevels(levels, tolerancePct = 0.02) {
+  if (levels.length === 0) return [];
+  const sorted = [...levels].sort((a, b) => a - b);
+  const clusters = [];
+  sorted.forEach(level => {
+    const last = clusters[clusters.length - 1];
+    if (last && Math.abs(level - last.avg) / last.avg < tolerancePct) {
+      last.values.push(level);
+      last.avg = last.values.reduce((a, b) => a + b, 0) / last.values.length;
+    } else {
+      clusters.push({ values: [level], avg: level });
+    }
+  });
+  return clusters.sort((a, b) => b.values.length - a.values.length);
+}
+
+function computeSupportResistance(closes) {
+  const { highs, lows } = findPivots(closes);
+  const resistance = clusterLevels(highs).slice(0, 2).map(c => c.avg).sort((a, b) => b - a);
+  const support = clusterLevels(lows).slice(0, 2).map(c => c.avg).sort((a, b) => b - a);
+  return { support, resistance };
+}
