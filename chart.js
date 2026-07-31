@@ -29,6 +29,37 @@ const RANGE_CONFIGS = {
 const PAD_LEFT = 56;
 const PAD_RIGHT = 10;
 
+const INTERVAL_MS = {
+  "5min": 5 * 60000,
+  "30min": 30 * 60000,
+  "1h": 60 * 60000,
+  "4h": 4 * 60 * 60000,
+  "1day": 24 * 60 * 60000,
+};
+
+// Overnight/weekend gaps between trading sessions shouldn't be drawn as a
+// straight diagonal line connecting yesterday's close to today's open —
+// that reads as a dramatic move that never happened. Anything more than
+// 3x the normal bar spacing is treated as a session break, and lines are
+// split into separate segments there instead of connected through it.
+function isSessionGap(series, i) {
+  if (!series.intraday || i === 0 || !series.intervalMs) return false;
+  return (series.timesMs[i] - series.timesMs[i - 1]) > series.intervalMs * 3;
+}
+
+function getSegments(series) {
+  const segments = [];
+  let start = 0;
+  for (let i = 1; i < series.closes.length; i++) {
+    if (isSessionGap(series, i)) {
+      segments.push([start, i - 1]);
+      start = i;
+    }
+  }
+  segments.push([start, series.closes.length - 1]);
+  return segments;
+}
+
 const chartState = {
   symbol: null,
   range: "6M",
@@ -159,6 +190,7 @@ async function loadChartRange() {
       closes: values.map(v => parseFloat(v.close)),
       volumes: values.map(v => parseFloat(v.volume) || 0),
       intraday: interval !== "1day",
+      intervalMs: INTERVAL_MS[interval],
     };
     chartState.cache[cacheKey] = series;
     chartState.series = series;
@@ -378,40 +410,49 @@ function renderPricePanel(series, sr, hoverIdx) {
   sr.resistance.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-critical")));
   sr.support.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-good")));
 
-  // price line + area fill
+  // price line + area fill — drawn per session segment (see getSegments)
+  // so overnight/weekend gaps break the line instead of connecting
+  // yesterday's close to today's open with a straight diagonal.
+  const segments = getSegments(series);
   const trendUp = closes[closes.length - 1] >= closes[0];
   const lineColor = trendUp ? "#1baf7a" : "#d03b3b";
-  ctx.beginPath();
-  closes.forEach((price, i) => {
-    const x = xmap.xFor(i), y = yFor(price);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.lineTo(xmap.xFor(closes.length - 1), padTop + plotH);
-  ctx.lineTo(xmap.xFor(0), padTop + plotH);
-  ctx.closePath();
   const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
   gradient.addColorStop(0, trendUp ? "rgba(27,175,122,0.18)" : "rgba(208,59,59,0.18)");
   gradient.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = gradient;
-  ctx.fill();
 
-  // overlays: SMA20 / SMA50 / EMA20
-  const drawOverlay = (values, color) => {
+  segments.forEach(([segStart, segEnd]) => {
     ctx.beginPath();
-    let started = false;
-    values.forEach((v, i) => {
-      if (!chartIsNum(v)) return;
-      const x = xmap.xFor(i), y = yFor(v);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.4;
+    for (let i = segStart; i <= segEnd; i++) {
+      const x = xmap.xFor(i), y = yFor(closes[i]);
+      if (i === segStart) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
     ctx.stroke();
+
+    ctx.lineTo(xmap.xFor(segEnd), padTop + plotH);
+    ctx.lineTo(xmap.xFor(segStart), padTop + plotH);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  });
+
+  // overlays: SMA20 / SMA50 / EMA20 (also broken at session gaps)
+  const drawOverlay = (values, color) => {
+    segments.forEach(([segStart, segEnd]) => {
+      ctx.beginPath();
+      let started = false;
+      for (let i = segStart; i <= segEnd; i++) {
+        const v = values[i];
+        if (!chartIsNum(v)) { started = false; continue; }
+        const x = xmap.xFor(i), y = yFor(v);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    });
   };
   if (chartState.overlays.sma20) drawOverlay(computeSMA(closes, 20), "#e0ab2e");
   if (chartState.overlays.sma50) drawOverlay(computeSMA(closes, 50), "#7ea0ff");
@@ -536,16 +577,19 @@ function renderRSIPanel(series, hoverIdx) {
     ctx.setLineDash([]);
   });
 
-  ctx.beginPath();
-  let started = false;
-  rsi.forEach((v, i) => {
-    if (v === null) return;
-    const x = xmap.xFor(i), y = yFor(v);
-    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  getSegments(series).forEach(([segStart, segEnd]) => {
+    ctx.beginPath();
+    let started = false;
+    for (let i = segStart; i <= segEnd; i++) {
+      const v = rsi[i];
+      if (v === null) { started = false; continue; }
+      const x = xmap.xFor(i), y = yFor(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#1baf7a";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   });
-  ctx.strokeStyle = "#1baf7a";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
 
   if (chartIsNum(hoverIdx)) {
     drawHoverLine(ctx, xmap.xFor(hoverIdx), 0, h);
@@ -607,17 +651,21 @@ function renderMACDPanel(series, hoverIdx) {
     ctx.fillRect(xmap.xFor(i) - barW / 2, Math.min(y0, y1), Math.max(barW - 1, 1), Math.abs(y1 - y0));
   });
 
+  const segments = getSegments(series);
   const drawLine = (arr, color) => {
-    ctx.beginPath();
-    let started = false;
-    arr.forEach((v, i) => {
-      if (!chartIsNum(v)) return;
-      const x = xmap.xFor(i), y = yFor(v);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    segments.forEach(([segStart, segEnd]) => {
+      ctx.beginPath();
+      let started = false;
+      for (let i = segStart; i <= segEnd; i++) {
+        const v = arr[i];
+        if (!chartIsNum(v)) { started = false; continue; }
+        const x = xmap.xFor(i), y = yFor(v);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     });
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
   };
   drawLine(macdLine, "#1baf7a");
   drawLine(signalLine, "#e0ab2e");

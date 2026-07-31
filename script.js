@@ -220,7 +220,13 @@ async function renderHomePage() {
     .then(items => renderNews(items.slice(0, 8), newsList))
     .catch(() => { newsList.innerHTML = '<p class="muted">Couldn\'t load market news right now.</p>'; });
 
-  await Promise.all(categoryBoxes.map(async ({ section, trendBadge, cat }) => {
+  // Stagger each category's start rather than firing all ~42 quote
+  // requests in the same instant — spreads the burst out over ~1.2s,
+  // which combined with the Worker's response caching keeps a normal
+  // page load well clear of Finnhub's 60-requests/minute free-tier cap.
+  await Promise.all(categoryBoxes.map(async ({ section, trendBadge, cat }, categoryIndex) => {
+    await new Promise(resolve => setTimeout(resolve, categoryIndex * 200));
+
     const results = await Promise.allSettled(cat.items.map(async ([symbol, name]) => {
       const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
       return { symbol, name, quote: q };

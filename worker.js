@@ -10,16 +10,24 @@
 // readable only here via `env`, never sent to the browser. The page calls
 // /api/finnhub and /api/twelvedata (see finnhubUrl()/twelveDataUrl() in
 // script.js/chart.js) instead of calling Finnhub/Twelve Data directly.
+//
+// Also caches upstream responses at Cloudflare's edge for a short time
+// (see cacheTTL below). This isn't just about speed — Finnhub's free tier
+// caps out at 60 requests/minute, and the home page alone requests ~42
+// quotes on load. Caching means repeat requests for the same symbol
+// (across visitors, or the same visitor reloading) get served without
+// touching Finnhub again, so the real request count stays far lower than
+// the raw number of page loads would suggest.
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/finnhub") {
-      return proxy(url, "https://finnhub.io/api/v1", "token", env.FINNHUB_API_KEY, "FINNHUB_API_KEY");
+      return proxy(url, "https://finnhub.io/api/v1", "token", env.FINNHUB_API_KEY, "FINNHUB_API_KEY", ctx);
     }
     if (url.pathname === "/api/twelvedata") {
-      return proxy(url, "https://api.twelvedata.com", "apikey", env.TWELVE_DATA_API_KEY, "TWELVE_DATA_API_KEY");
+      return proxy(url, "https://api.twelvedata.com", "apikey", env.TWELVE_DATA_API_KEY, "TWELVE_DATA_API_KEY", ctx);
     }
 
     // Anything else falls back to the static site (shouldn't normally be
@@ -28,7 +36,19 @@ export default {
   },
 };
 
-async function proxy(url, apiBase, keyParamName, key, keyEnvName) {
+// How long to cache each kind of request, in seconds. Quotes change fast
+// (short cache); filings/financials/earnings calendar barely change
+// within a day (long cache); everything else is a reasonable middle
+// ground. Tune per-path rather than one blanket value, since caching a
+// quote for an hour would make the dashboard feel stale, but caching a
+// 10-K filing list for only 20 seconds wastes the cache entirely.
+function cacheTTL(path) {
+  if (path === "/quote") return 20;
+  if (path === "/stock/filings" || path === "/stock/financials-reported" || path === "/calendar/earnings") return 3600;
+  return 120;
+}
+
+async function proxy(url, apiBase, keyParamName, key, keyEnvName, ctx) {
   const path = url.searchParams.get("path");
   if (!path) {
     return jsonResponse({ error: "Missing 'path' parameter" }, 400);
@@ -40,14 +60,26 @@ async function proxy(url, apiBase, keyParamName, key, keyEnvName) {
   const search = new URLSearchParams(url.searchParams);
   search.delete("path");
   search.set(keyParamName, key);
+  const targetUrl = `${apiBase}${path}?${search.toString()}`;
+
+  const cache = caches.default;
+  const cacheKey = new Request(targetUrl);
+
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
 
   try {
-    const res = await fetch(`${apiBase}${path}?${search.toString()}`);
+    const res = await fetch(targetUrl);
     const body = await res.text();
-    return new Response(body, {
+    const response = new Response(body, {
       status: res.status,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      headers: {
+        "content-type": "application/json",
+        "cache-control": res.ok ? `public, max-age=${cacheTTL(path)}` : "no-store",
+      },
     });
+    if (res.ok) ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    return response;
   } catch {
     return jsonResponse({ error: "Upstream request failed" }, 502);
   }

@@ -194,6 +194,37 @@ is wrong.
 GitHub Pages remains disabled/irrelevant now that this Worker is the
 deploy target — don't re-suggest it for this repo.
 
+## Rate-limit resilience + chart session-gap fix (2026-07-31)
+
+- **Worker-side caching**: `worker.js`'s `proxy()` now caches upstream
+  responses at Cloudflare's edge (`caches.default`) with per-path TTLs
+  (`cacheTTL()`) — 20s for quotes, 1hr for filings/financials/earnings
+  calendar (rarely change), 120s for everything else. This is a shared
+  cache across all visitors, not per-browser — meaningfully cuts real
+  Finnhub/Twelve Data calls since the home page alone requests ~42 quotes
+  per load.
+- **Staggered home page loads**: `renderHomePage()` in `script.js` now
+  delays each category's start by `categoryIndex * 200ms` instead of
+  firing all 7 categories' ~42 requests in the same instant.
+- **Chart session-gap bug (found and fixed 2026-07-31)**: intraday charts
+  (1D/1H/4H/1W) were drawing one continuous line across overnight/weekend
+  gaps, connecting yesterday's close straight to today's open — looked
+  like a dramatic crash that never happened. Root cause: time-proportional
+  x-axis (added for session shading) compresses the gap into a small
+  width, but the line-drawing loops still connected every point with
+  `lineTo()` regardless of the real time gap. Fixed via `isSessionGap()` /
+  `getSegments()` in `chart.js` — any gap > 3x the interval's normal bar
+  spacing now breaks the line (new `moveTo()`) instead of connecting
+  through it. Applied to the price line, area fill, SMA/EMA overlays, and
+  the RSI/MACD panel lines — all of them iterate the same time-based
+  x-axis, so all of them had the same bug. If a new line-drawing feature
+  is added to the chart later, it needs the same segment-aware treatment
+  or it'll reintroduce this.
+- Both the rate-limit issue and the chart bug were only caught by testing
+  against real live data over a real multi-day range — worth remembering
+  that a lot of chart/time-series bugs like this don't show up with a
+  single day of mock data.
+
 ## Config / secrets
 
 `config.js` holds the real Finnhub (and optional Twelve Data) API keys and
