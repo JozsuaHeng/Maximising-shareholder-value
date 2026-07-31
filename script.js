@@ -1,6 +1,23 @@
 // ---- Config ----
-const BASE_URL = "https://finnhub.io/api/v1";
 const THEME_KEY = "stockDashboardTheme";
+
+// Local (Live Server) calls Finnhub directly using config.js's key.
+// Deployed (Cloudflare Pages) calls the /api/finnhub proxy instead, which
+// attaches the key server-side — the key never reaches the browser there.
+// config.js is gitignored either way, so it's simply absent on the
+// deployed site (a harmless 404 on that one <script> tag, nothing reads
+// FINNHUB_API_KEY/TWELVE_DATA_API_KEY when IS_LOCAL_DEV is false).
+const IS_LOCAL_DEV = ["localhost", "127.0.0.1", ""].includes(location.hostname);
+
+function finnhubUrl(path, params) {
+  const search = new URLSearchParams(params || {});
+  if (IS_LOCAL_DEV) {
+    search.set("token", FINNHUB_API_KEY);
+    return `https://finnhub.io/api/v1${path}?${search.toString()}`;
+  }
+  search.set("path", path);
+  return `/api/finnhub?${search.toString()}`;
+}
 
 const HOME_CATEGORIES = [
   { title: "Trending Tech", items: [["AAPL", "Apple"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["NVDA", "Nvidia"], ["META", "Meta"]] },
@@ -199,13 +216,13 @@ async function renderHomePage() {
   newsBox.appendChild(newsList);
   homeGrid.appendChild(newsBox);
 
-  fetchJSON(`${BASE_URL}/news?category=general&token=${FINNHUB_API_KEY}`)
+  fetchJSON(finnhubUrl("/news", { category: "general" }))
     .then(items => renderNews(items.slice(0, 8), newsList))
     .catch(() => { newsList.innerHTML = '<p class="muted">Couldn\'t load market news right now.</p>'; });
 
   await Promise.all(categoryBoxes.map(async ({ section, trendBadge, cat }) => {
     const results = await Promise.allSettled(cat.items.map(async ([symbol, name]) => {
-      const q = await fetchJSON(`${BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`);
+      const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
       return { symbol, name, quote: q };
     }));
 
@@ -272,7 +289,7 @@ function renderMovers(allResults) {
 
 // ---- Main flow ----
 async function loadTicker(symbol) {
-  if (FINNHUB_API_KEY === "YOUR_API_KEY_HERE") {
+  if (IS_LOCAL_DEV && FINNHUB_API_KEY === "YOUR_API_KEY_HERE") {
     setStatus("Add your free Finnhub API key to config.js first. See README.md.", true);
     return;
   }
@@ -287,16 +304,16 @@ async function loadTicker(symbol) {
 
   try {
     const [quote, profile, metricRes, recommendationRes, earningsRes, peersRes, newsRes, financialsRes, filingsRes, earningsCalendarRes] = await Promise.all([
-      fetchJSON(`${BASE_URL}/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`),
-      fetchJSON(`${BASE_URL}/stock/profile2?symbol=${symbol}&token=${FINNHUB_API_KEY}`),
-      fetchJSON(`${BASE_URL}/stock/metric?symbol=${symbol}&metric=all&token=${FINNHUB_API_KEY}`),
-      fetchJSON(`${BASE_URL}/stock/recommendation?symbol=${symbol}&token=${FINNHUB_API_KEY}`).catch(() => []),
-      fetchJSON(`${BASE_URL}/stock/earnings?symbol=${symbol}&token=${FINNHUB_API_KEY}`).catch(() => []),
-      fetchJSON(`${BASE_URL}/stock/peers?symbol=${symbol}&token=${FINNHUB_API_KEY}`).catch(() => []),
-      fetchJSON(`${BASE_URL}/company-news?symbol=${symbol}&from=${fmt(twoWeeksAgo)}&to=${fmt(today)}&token=${FINNHUB_API_KEY}`).catch(() => []),
-      fetchJSON(`${BASE_URL}/stock/financials-reported?symbol=${symbol}&freq=quarterly&token=${FINNHUB_API_KEY}`).catch(() => null),
-      fetchJSON(`${BASE_URL}/stock/filings?symbol=${symbol}&token=${FINNHUB_API_KEY}`).catch(() => []),
-      fetchJSON(`${BASE_URL}/calendar/earnings?symbol=${symbol}&token=${FINNHUB_API_KEY}`).catch(() => null),
+      fetchJSON(finnhubUrl("/quote", { symbol })),
+      fetchJSON(finnhubUrl("/stock/profile2", { symbol })),
+      fetchJSON(finnhubUrl("/stock/metric", { symbol, metric: "all" })),
+      fetchJSON(finnhubUrl("/stock/recommendation", { symbol })).catch(() => []),
+      fetchJSON(finnhubUrl("/stock/earnings", { symbol })).catch(() => []),
+      fetchJSON(finnhubUrl("/stock/peers", { symbol })).catch(() => []),
+      fetchJSON(finnhubUrl("/company-news", { symbol, from: fmt(twoWeeksAgo), to: fmt(today) })).catch(() => []),
+      fetchJSON(finnhubUrl("/stock/financials-reported", { symbol, freq: "quarterly" })).catch(() => null),
+      fetchJSON(finnhubUrl("/stock/filings", { symbol })).catch(() => []),
+      fetchJSON(finnhubUrl("/calendar/earnings", { symbol })).catch(() => null),
     ]);
 
     if (!quote || quote.c === 0) {
@@ -881,7 +898,7 @@ async function renderPeers(peersArr, currentSymbol) {
     row.appendChild(chip);
 
     try {
-      const p = await fetchJSON(`${BASE_URL}/stock/profile2?symbol=${sym}&token=${FINNHUB_API_KEY}`);
+      const p = await fetchJSON(finnhubUrl("/stock/profile2", { symbol: sym }));
       if (p && p.name) {
         const nameSpan = document.createElement("span");
         nameSpan.className = "peer-name";

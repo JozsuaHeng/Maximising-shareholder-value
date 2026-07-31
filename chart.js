@@ -50,6 +50,19 @@ function parseNaiveTime(dateTimeStr) {
   return new Date(dateTimeStr.replace(" ", "T")).getTime();
 }
 
+// Same dual-mode pattern as finnhubUrl() in script.js: direct call locally
+// (using config.js's key), proxied through Cloudflare Pages Functions when
+// deployed (IS_LOCAL_DEV is declared in script.js, loaded before this file).
+function twelveDataUrl(path, params) {
+  const search = new URLSearchParams(params || {});
+  if (IS_LOCAL_DEV) {
+    search.set("apikey", TWELVE_DATA_API_KEY);
+    return `https://api.twelvedata.com${path}?${search.toString()}`;
+  }
+  search.set("path", path);
+  return `/api/twelvedata?${search.toString()}`;
+}
+
 // ---- DOM refs ----
 const chartRangeRow = document.getElementById("chartRangeRow");
 const chartOverlayRow = document.getElementById("chartOverlayRow");
@@ -108,7 +121,7 @@ function initChart(symbol) {
     showChartUnavailable("Charts currently only support plain ticker symbols (stocks/ETFs) — this symbol's format isn't supported yet.");
     return;
   }
-  if (typeof TWELVE_DATA_API_KEY === "undefined" || !TWELVE_DATA_API_KEY || TWELVE_DATA_API_KEY === "YOUR_TWELVE_DATA_KEY_HERE") {
+  if (IS_LOCAL_DEV && (typeof TWELVE_DATA_API_KEY === "undefined" || !TWELVE_DATA_API_KEY || TWELVE_DATA_API_KEY === "YOUR_TWELVE_DATA_KEY_HERE")) {
     showChartUnavailable("Add a free Twelve Data API key to config.js to enable price charts (Finnhub's free plan doesn't include them). See README.md.");
     return;
   }
@@ -129,7 +142,7 @@ async function loadChartRange() {
 
   const { interval, outputsize } = RANGE_CONFIGS[range];
   try {
-    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`;
+    const url = twelveDataUrl("/time_series", { symbol, interval, outputsize });
     const res = await fetch(url);
     const data = await res.json();
     if (!data || data.status === "error" || !Array.isArray(data.values) || data.values.length < 2) {

@@ -154,6 +154,26 @@ direction.
   tiers start at $29/mo. Revisit only if a specific data need arises that
   Finnhub/Twelve Data can't cover.
 
+## Public deployment: Cloudflare Pages proxy
+
+User enabled GitHub Pages after being warned it wouldn't work — confirmed
+directly (`config.js` 404s on the deployed site, Pages is static-only, no
+functions). Solution: `functions/api/finnhub.js` and
+`functions/api/twelvedata.js` are Cloudflare Pages Functions that hold the
+real keys as Cloudflare-side secrets and proxy requests, so the browser
+never sees them. `script.js` detects `IS_LOCAL_DEV` (hostname is
+localhost/127.0.0.1) and switches between calling the APIs directly
+(local dev, using `config.js`) and calling `/api/finnhub` /
+`/api/twelvedata` (deployed). Every Finnhub call site goes through the
+`finnhubUrl(path, params)` helper in `script.js`; Twelve Data goes through
+`twelveDataUrl(path, params)` in `chart.js` — don't add a new direct
+`fetch` call to either API without going through these, or it'll break on
+the deployed site while working fine locally (easy to miss since local
+dev is the default test path).
+
+GitHub Pages remains disabled/irrelevant now that Cloudflare Pages is the
+deploy target — don't re-suggest it for this repo.
+
 ## Config / secrets
 
 `config.js` holds the real Finnhub (and optional Twelve Data) API keys and
