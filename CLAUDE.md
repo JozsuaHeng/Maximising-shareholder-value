@@ -154,24 +154,44 @@ direction.
   tiers start at $29/mo. Revisit only if a specific data need arises that
   Finnhub/Twelve Data can't cover.
 
-## Public deployment: Cloudflare Pages proxy
+## Public deployment: Cloudflare Worker proxy
 
 User enabled GitHub Pages after being warned it wouldn't work — confirmed
 directly (`config.js` 404s on the deployed site, Pages is static-only, no
-functions). Solution: `functions/api/finnhub.js` and
-`functions/api/twelvedata.js` are Cloudflare Pages Functions that hold the
-real keys as Cloudflare-side secrets and proxy requests, so the browser
-never sees them. `script.js` detects `IS_LOCAL_DEV` (hostname is
-localhost/127.0.0.1) and switches between calling the APIs directly
-(local dev, using `config.js`) and calling `/api/finnhub` /
-`/api/twelvedata` (deployed). Every Finnhub call site goes through the
-`finnhubUrl(path, params)` helper in `script.js`; Twelve Data goes through
-`twelveDataUrl(path, params)` in `chart.js` — don't add a new direct
-`fetch` call to either API without going through these, or it'll break on
-the deployed site while working fine locally (easy to miss since local
-dev is the default test path).
+functions).
 
-GitHub Pages remains disabled/irrelevant now that Cloudflare Pages is the
+First attempt used `functions/api/*.js` (classic Cloudflare Pages
+Functions convention) — **wrong for this account's setup**. Cloudflare's
+dashboard created a genuine **Worker** project (evidenced by "Deploy
+command: npx wrangler deploy" in their Settings → Build, not a Pages-style
+deploy), which doesn't auto-detect a `functions/` folder at all — that
+convention only applies to classic Pages projects. The
+`functions/` directory was deleted; don't recreate it for this repo.
+
+Current setup: `wrangler.jsonc` (assets binding, `run_worker_first:
+["/api/*"]`) + a single `worker.js` entry point that handles `/api/finnhub`
+and `/api/twelvedata` and falls through to `env.ASSETS.fetch()` for
+everything else. Real keys are Cloudflare-side secrets
+(`FINNHUB_API_KEY`, `TWELVE_DATA_API_KEY`), read via `env` in
+`worker.js`, never sent to the browser.
+
+`script.js` detects `IS_LOCAL_DEV` (hostname is localhost/127.0.0.1) and
+switches between calling the APIs directly (local dev, using `config.js`)
+and calling `/api/finnhub` / `/api/twelvedata` (deployed). Every Finnhub
+call site goes through the `finnhubUrl(path, params)` helper in
+`script.js`; Twelve Data goes through `twelveDataUrl(path, params)` in
+`chart.js` — don't add a new direct `fetch` call to either API without
+going through these, or it'll break on the deployed site while working
+fine locally (easy to miss since local dev is the default test path).
+
+Cloudflare's "Variables cannot be added to a Worker that only has static
+assets" error goes away once a deploy has picked up `wrangler.jsonc` (it
+needs to see the `main`/`assets` config before the dashboard exposes the
+secrets UI) — if this recurs after further changes, check a deploy
+actually ran with the current `wrangler.jsonc` before assuming the config
+is wrong.
+
+GitHub Pages remains disabled/irrelevant now that this Worker is the
 deploy target — don't re-suggest it for this repo.
 
 ## Config / secrets

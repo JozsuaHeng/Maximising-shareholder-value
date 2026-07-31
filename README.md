@@ -37,30 +37,37 @@ rule-based (not AI) outlook. Light/dark themes, mobile-friendly.
 - `sectorRules.js` — sector-aware traffic-light thresholds
 - `analysis.js` — the rule-based Outlook logic
 - `config.js` (gitignored) / `config.example.js` (template) — API keys
-- `functions/api/finnhub.js`, `functions/api/twelvedata.js` — Cloudflare
-  Pages proxy, only used on the deployed site (see below)
+- `worker.js` / `wrangler.jsonc` — Cloudflare Worker proxy, only used on
+  the deployed site (see below)
 
-## Deploying publicly (Cloudflare Pages)
+## Deploying publicly (Cloudflare Workers)
 
 Locally, the app calls Finnhub/Twelve Data directly using `config.js`.
 For a public URL, that file is gitignored on purpose — anyone visiting a
 plain static site could otherwise view-source your keys. Instead, deploy
-via Cloudflare Pages, which runs the two files in `functions/api/` as
-small serverless functions that hold your keys server-side:
+as a Cloudflare Worker: `worker.js` handles `/api/finnhub` and
+`/api/twelvedata`, attaching your keys server-side, while
+`wrangler.jsonc` tells Cloudflare to serve everything else as static
+files without touching the Worker at all.
 
-1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages**
-   → **Create** → **Pages** → **Connect to Git** → pick this repo.
-2. Build settings: framework preset **None**, build command **blank**,
-   output directory **/** (this is a static site, nothing to build).
-3. Before the first deploy, go to **Settings → Environment variables** and
-   add two **secrets**: `FINNHUB_API_KEY` and `TWELVE_DATA_API_KEY` (your
-   real keys — same ones in your local `config.js`).
-4. Deploy. Your public URL calls `/api/finnhub` and `/api/twelvedata`
-   automatically (the app detects it's not running on `localhost`) — your
-   keys stay in Cloudflare's secrets, never in the browser.
+1. In the Cloudflare dashboard, your Worker project should already be
+   connected to this GitHub repo (**Workers & Pages** → your project →
+   **Settings → Build**). If it says "disconnected from your Git
+   account," click **Manage** there and reconnect it first.
+2. **Settings → Variables and secrets** → add two **secrets**:
+   `FINNHUB_API_KEY` and `TWELVE_DATA_API_KEY` (your real keys — same
+   ones in your local `config.js`). This only works once the project has
+   picked up `wrangler.jsonc` from a deploy — if you still see "Variables
+   cannot be added to a Worker that only has static assets," trigger a
+   new deployment first (push a commit, or **New deployment** in the
+   dashboard), then try adding the secrets again.
+3. Once deployed, your public URL calls `/api/finnhub` and
+   `/api/twelvedata` automatically (the app detects it's not running on
+   `localhost`) — your keys stay in Cloudflare's secrets, never in the
+   browser.
 
-GitHub Pages can't do this — it only serves static files, no functions —
-which is why the earlier GitHub Pages attempt showed blank data.
+GitHub Pages can't do this — it only serves static files, no server-side
+code — which is why enabling it earlier showed blank data everywhere.
 
 ## Notes
 
