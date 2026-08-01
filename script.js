@@ -202,7 +202,7 @@ async function renderHomePage() {
 
     section.appendChild(row);
     homeGrid.appendChild(section);
-    return { section, trendBadge, cat };
+    return { section, trendBadge, cat, loaded: false };
   });
 
   const newsBox = document.createElement("div");
@@ -220,41 +220,58 @@ async function renderHomePage() {
     .then(items => renderNews(items.slice(0, 8), newsList))
     .catch(() => { newsList.innerHTML = '<p class="muted">Couldn\'t load market news right now.</p>'; });
 
-  // Stagger each category's start rather than firing all ~42 quote
-  // requests in the same instant — spreads the burst out over ~1.2s,
-  // which combined with the Worker's response caching keeps a normal
-  // page load well clear of Finnhub's 60-requests/minute free-tier cap.
-  await Promise.all(categoryBoxes.map(async ({ section, trendBadge, cat }, categoryIndex) => {
-    await new Promise(resolve => setTimeout(resolve, categoryIndex * 200));
-
-    const results = await Promise.allSettled(cat.items.map(async ([symbol, name]) => {
-      const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
-      return { symbol, name, quote: q };
-    }));
-
-    const changes = [];
-    results.forEach(r => {
-      if (r.status !== "fulfilled") return;
-      const { symbol, name, quote } = r.value;
-      if (!isNum(quote.c) || quote.c === 0) return;
-      updateHomeChip(section, symbol, quote);
-      changes.push(quote.dp ?? 0);
-      allResults.push({ symbol, name, quote });
+  // Only fetch a category's ~6 quotes once its box actually scrolls near
+  // the viewport, instead of firing all 7 categories' ~42 requests the
+  // instant the page loads. rootMargin starts the fetch ~400px before it
+  // comes into view, so data is usually ready by the time you see it.
+  // `loadSequence` still staggers whichever categories fire close
+  // together (e.g. everything visible on first load) so even that
+  // initial batch doesn't land in the same instant.
+  let loadSequence = 0;
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const box = categoryBoxes.find(b => b.section === entry.target);
+      if (!box || box.loaded) return;
+      box.loaded = true;
+      observer.unobserve(box.section);
+      loadCategoryQuotes(box, loadSequence++, allResults);
     });
+  }, { rootMargin: "400px" });
 
-    if (changes.length > 0) {
-      const avg = changes.reduce((a, b) => a + b, 0) / changes.length;
-      trendBadge.textContent = `${avg >= 0 ? "▲" : "▼"} ${Math.abs(avg).toFixed(1)}%`;
-      trendBadge.className = "category-trend " + (avg >= 0 ? "positive" : "negative");
-    } else {
-      trendBadge.textContent = "";
-    }
+  categoryBoxes.forEach(box => observer.observe(box.section));
+}
 
-    // Render movers progressively as each category finishes, rather than
-    // waiting on the single slowest category (which can stall the whole
-    // strip if one category is rate-limited or just slow to respond).
-    renderMovers(allResults);
+async function loadCategoryQuotes({ section, trendBadge, cat }, sequenceIndex, allResults) {
+  await new Promise(resolve => setTimeout(resolve, sequenceIndex * 200));
+
+  const results = await Promise.allSettled(cat.items.map(async ([symbol, name]) => {
+    const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
+    return { symbol, name, quote: q };
   }));
+
+  const changes = [];
+  results.forEach(r => {
+    if (r.status !== "fulfilled") return;
+    const { symbol, name, quote } = r.value;
+    if (!isNum(quote.c) || quote.c === 0) return;
+    updateHomeChip(section, symbol, quote);
+    changes.push(quote.dp ?? 0);
+    allResults.push({ symbol, name, quote });
+  });
+
+  if (changes.length > 0) {
+    const avg = changes.reduce((a, b) => a + b, 0) / changes.length;
+    trendBadge.textContent = `${avg >= 0 ? "▲" : "▼"} ${Math.abs(avg).toFixed(1)}%`;
+    trendBadge.className = "category-trend " + (avg >= 0 ? "positive" : "negative");
+  } else {
+    trendBadge.textContent = "";
+  }
+
+  // Render movers progressively as each category finishes, rather than
+  // waiting on every category (which may never all load if some are
+  // scrolled to only much later, or not at all).
+  renderMovers(allResults);
 }
 
 function updateHomeChip(section, symbol, quote) {

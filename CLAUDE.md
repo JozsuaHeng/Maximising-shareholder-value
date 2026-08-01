@@ -225,6 +225,34 @@ deploy target — don't re-suggest it for this repo.
   that a lot of chart/time-series bugs like this don't show up with a
   single day of mock data.
 
+## Home page lazy-loading (2026-07-31)
+
+User asked to optimize home page requests further after the caching/
+staggering fix. Confirmed directly that Finnhub has no batch/multi-symbol
+quote endpoint (`?symbol=AAPL,MSFT` just returns an empty quote) — so the
+only real lever left was requesting fewer things upfront. `renderHomePage`
+now uses an `IntersectionObserver` (rootMargin 400px) per category
+section instead of fetching all 7 categories' ~42 quotes immediately —
+`loadCategoryQuotes()` only fires once a category's box is about to
+scroll into view, and unobserves itself after firing once.
+
+Tested by counting actual requests at different viewport heights: at a
+typical desktop size the 3-column layout is compact enough that most/all
+categories are near the initial viewport anyway (modest savings there),
+but at mobile width (single column) only ~12 of 42 requests fired on
+initial load — most of the win is on mobile/narrow viewports, not desktop.
+This is expected given the layout, not a bug.
+
+Known limitation (not fixed, low-impact by design): if a user scrolls
+instantly from top to bottom (e.g. dragging the scrollbar thumb, not a
+gradual scroll), sections that were never actually rendered in the
+viewport during the jump won't have fired their IntersectionObserver
+callback. Not treated as worth fixing — the observer keeps listening
+until a section fires once, so scrolling back up past a missed section
+still triggers it. If this becomes a real complaint, the fix would be a
+scroll-end fallback that force-loads any still-unloaded category once the
+user nears the bottom of the page.
+
 ## Config / secrets
 
 `config.js` holds the real Finnhub (and optional Twelve Data) API keys and
