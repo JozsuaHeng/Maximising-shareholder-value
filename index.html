@@ -28,8 +28,12 @@
   </div>
   <p class="tagline">Search a ticker to see the numbers, what they mean, and a plain-English read on the stock — all in one place.</p>
   <div class="search-row">
-    <input type="text" id="tickerInput" placeholder="Enter a ticker (e.g. AAPL)" autocomplete="off">
+    <div class="search-input-wrap">
+      <input type="text" id="tickerInput" placeholder="Search a company or ticker (e.g. Apple, AAPL)" autocomplete="off">
+      <div id="searchSuggestions" class="search-suggestions hidden"></div>
+    </div>
     <button id="searchBtn">Search</button>
+    <button id="compareLink" class="compare-link">Compare</button>
   </div>
 </header>
 
@@ -42,6 +46,25 @@
   </div>
 
   <div id="homeGrid" class="home-grid"></div>
+</section>
+
+<section id="compareView" class="compare-view hidden">
+  <div class="card">
+    <h3>Compare Stocks <span class="card-subtitle">(up to 4 at once)</span></h3>
+    <div class="compare-input-row" id="compareInputRow">
+      <input type="text" class="compare-ticker-input" placeholder="Ticker (e.g. AAPL)">
+      <input type="text" class="compare-ticker-input" placeholder="Ticker (e.g. MSFT)">
+    </div>
+    <div class="compare-actions">
+      <button id="compareAddBtn" class="compare-add-btn" type="button">+ Add another</button>
+      <button id="compareRunBtn" type="button">Compare</button>
+    </div>
+    <p id="compareStatus" class="muted small"></p>
+  </div>
+  <div class="card hidden" id="compareResultsCard">
+    <h3>Comparison</h3>
+    <div id="compareResults" class="compare-results"></div>
+  </div>
 </section>
 
 <main id="dashboard" class="dashboard-grid hidden">
@@ -258,5 +281,7 @@
 <script src="clock.js"></script>
 <script src="script.js"></script>
 <script src="chart.js"></script>
+<script src="autocomplete.js"></script>
+<script src="compare.js"></script>
 </body>
 </html>

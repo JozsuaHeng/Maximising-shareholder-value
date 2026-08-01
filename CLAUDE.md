@@ -253,6 +253,38 @@ still triggers it. If this becomes a real complaint, the fix would be a
 scroll-end fallback that force-loads any still-unloaded category once the
 user nears the bottom of the page.
 
+## Search autocomplete + comparison view (2026-07-31)
+
+**Autocomplete** (`autocomplete.js`): confirmed Finnhub's `/search`
+endpoint works free tier before building. Debounced 300ms, results cached
+1hr in `worker.js` (symbol↔name mappings barely ever change, and popular
+queries like "apple" repeat a lot across users, so this is a good caching
+target). One real bug hit during implementation: the file's keydown
+listener on `#tickerInput` was firing AFTER `script.js`'s existing plain
+"Enter → search" listener (registration order = bubble-phase firing
+order), so `stopImmediatePropagation()` on Enter-with-a-suggestion-
+highlighted did nothing — the search had already fired by the time it
+ran. Fixed by registering autocomplete's listener on the **capture**
+phase (`addEventListener(..., true)`), which always runs before bubble-
+phase listeners regardless of registration order, so `stopPropagation()`
+there correctly pre-empts the later bubble-phase handler. Worth
+remembering for any future multi-listener-on-one-element situation.
+
+**Comparison** (`compare.js`): new `#compareView`, up to 4 tickers side
+by side. Reuses `getSectorBucket()`/`getTrafficLight()`/`TRAFFIC_LABELS`
+from `sectorRules.js` per-column (each ticker's traffic-light color is
+judged against *that company's own* detected industry, not a shared
+bucket) and `showTooltip()` from `script.js` for the (?) buttons — same
+definitions used elsewhere, so the numbers/explanations stay consistent
+with the single-ticker deep-dive view. `COMPARE_ROWS` in `compare.js` is
+the list of metrics shown; add a row there (with a `get()` function
+reading from the existing `{quote, profile, metric}` shape) to add more.
+
+Both new views wired into the existing `goHome()`/`loadTicker()` view-
+toggling so only one of home/dashboard/compare is ever visible — if a
+new top-level view is added later, remember to hide it from those two
+functions too, or it'll stay visible when navigating away.
+
 ## Config / secrets
 
 `config.js` holds the real Finnhub (and optional Twelve Data) API keys and

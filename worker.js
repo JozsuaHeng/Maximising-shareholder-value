@@ -44,7 +44,7 @@ export default {
 // 10-K filing list for only 20 seconds wastes the cache entirely.
 function cacheTTL(path) {
   if (path === "/quote") return 20;
-  if (path === "/stock/filings" || path === "/stock/financials-reported" || path === "/calendar/earnings") return 3600;
+  if (path === "/stock/filings" || path === "/stock/financials-reported" || path === "/calendar/earnings" || path === "/search") return 3600;
   return 120;
 }
 

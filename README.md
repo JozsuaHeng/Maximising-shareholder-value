@@ -21,18 +21,21 @@ Plain HTML/CSS/JS. No build tools, no npm install.
 ## What's on it
 
 A home page of browsable categories (stocks, ETFs, bond ETFs, crypto)
-with a live "movers" strip and market news. Search a ticker for a full
-deep-dive: price chart with RSI/MACD/volume/support-resistance and
-SMA/EMA overlays, valuation/growth/profitability/dividend/momentum
-indicators with sector-aware traffic lights, real financial statements
-and SEC filings, analyst recommendations, similar companies, and a
-rule-based (not AI) outlook. Light/dark themes, mobile-friendly.
+with a live "movers" strip and market news. Search (with autocomplete)
+a ticker for a full deep-dive: price chart with RSI/MACD/volume/support-
+resistance and SMA/EMA overlays, valuation/growth/profitability/dividend/
+momentum indicators with sector-aware traffic lights, real financial
+statements and SEC filings, analyst recommendations, similar companies,
+and a rule-based (not AI) outlook. Or compare up to 4 tickers side by
+side. Light/dark themes, mobile-friendly.
 
 ## Files
 
 - `index.html` / `style.css` / `script.js` — page + main logic
 - `chart.js` — the price chart and technical-analysis panels
 - `clock.js` — header clock (timezone + market hours)
+- `autocomplete.js` — ticker search suggestions dropdown
+- `compare.js` — side-by-side stock comparison view
 - `definitions.js` — tooltip text + formulas
 - `sectorRules.js` — sector-aware traffic-light thresholds
 - `analysis.js` — the rule-based Outlook logic

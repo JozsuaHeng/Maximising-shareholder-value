@@ -134,6 +134,7 @@ document.addEventListener("keydown", e => {
 
 function goHome() {
   dashboard.classList.add("hidden");
+  document.getElementById("compareView").classList.add("hidden");
   homeView.classList.remove("hidden");
   tickerInput.value = "";
   setStatus("");
@@ -319,6 +320,7 @@ async function loadTicker(symbol) {
 
   homeView.classList.add("hidden");
   dashboard.classList.add("hidden");
+  document.getElementById("compareView").classList.add("hidden");
   setStatus(`Loading ${displaySymbol(symbol)}...`);
 
   const today = new Date();
