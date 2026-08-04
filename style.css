@@ -186,79 +186,57 @@ header { max-width: 1400px; margin: 0 auto 24px; }
   display: none;
 }
 
-.movers-card { margin-bottom: 20px; }
+/* ---- Home tabs ---- */
+.home-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
 
-.movers-bubbles {
+.home-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  padding: 6px 0 2px;
+  gap: 6px;
 }
 
-.mover-bubble {
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  transition: transform 0.15s ease;
-  flex-shrink: 0;
-}
-.mover-bubble:hover { transform: scale(1.07); }
-.mover-up { background: radial-gradient(circle at 32% 28%, #22d422, var(--status-good)); }
-.mover-down { background: radial-gradient(circle at 32% 28%, #ea6a69, var(--status-critical)); }
-.mover-symbol { font-size: 12px; line-height: 1.2; }
-.mover-change { font-size: 10px; opacity: 0.9; }
-
-.home-grid {
-  column-count: 3;
-  column-gap: 20px;
-}
-@media (max-width: 1100px) { .home-grid { column-count: 2; } }
-@media (max-width: 680px) { .home-grid { column-count: 1; } }
-
-.home-category {
-  background: var(--bg-surface);
+.home-tab {
+  padding: 7px 14px;
+  border-radius: 20px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px 18px;
-  margin-bottom: 20px;
-  break-inside: avoid;
-}
-
-.home-category h3 {
-  margin: 0 0 12px;
-  font-size: 13px;
+  background: var(--bg-surface);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
+.home-tab:hover { border-color: var(--accent); color: var(--text-primary); }
+.home-tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 
-.category-trend {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: normal;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--bg-surface-2);
-  color: var(--text-muted);
+.home-view-toggle { display: flex; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.home-view-toggle button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
-.category-trend.positive { color: var(--positive); }
-.category-trend.negative { color: var(--negative); }
+.home-view-toggle button.active { background: var(--bg-surface-2); color: var(--text-primary); }
 
+.home-tab-card { min-height: 200px; }
+.home-content { min-height: 120px; }
+.home-note { margin-top: 12px; }
+
+/* ---- Home chip grid (reused by tabs) ---- */
 .home-chip-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -278,7 +256,34 @@ header { max-width: 1400px; margin: 0 auto 24px; }
 .home-chip-price.positive { color: var(--positive); }
 .home-chip-price.negative { color: var(--negative); }
 
-.market-news-box .news-list { max-height: 420px; overflow-y: auto; }
+/* ---- Heatmap view ---- */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
+.heatmap-tile {
+  border: none;
+  border-radius: 8px;
+  padding: 16px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #fff;
+  transition: transform 0.12s ease;
+}
+.heatmap-tile:hover { transform: scale(1.03); }
+.heatmap-symbol { font-size: 13px; font-weight: 700; }
+.heatmap-change { font-size: 12px; font-weight: 600; opacity: 0.95; }
+
+/* ---- Macro tab ---- */
+.macro-grid .indicator { padding: 14px 16px; }
+.macro-date { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+#homeNewsList .news-list { max-height: 420px; overflow-y: auto; }
 
 /* ---- Dashboard layout ---- */
 .dashboard-grid {

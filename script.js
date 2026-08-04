@@ -19,24 +19,12 @@ function finnhubUrl(path, params) {
   return `/api/finnhub?${search.toString()}`;
 }
 
-const HOME_CATEGORIES = [
-  { title: "Trending Tech", items: [["AAPL", "Apple"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["NVDA", "Nvidia"], ["META", "Meta"]] },
-  { title: "Blue Chip", items: [["JNJ", "Johnson & Johnson"], ["PG", "Procter & Gamble"], ["KO", "Coca-Cola"], ["JPM", "JPMorgan Chase"], ["V", "Visa"], ["WMT", "Walmart"]] },
-  { title: "Dividend Payers", items: [["T", "AT&T"], ["XOM", "ExxonMobil"], ["VZ", "Verizon"], ["PFE", "Pfizer"], ["MO", "Altria"], ["IBM", "IBM"]] },
-  { title: "Growth", items: [["TSLA", "Tesla"], ["NFLX", "Netflix"], ["SHOP", "Shopify"], ["PLTR", "Palantir"], ["CRWD", "CrowdStrike"], ["AMD", "AMD"]] },
-  { title: "ETFs", items: [["SPY", "S&P 500"], ["QQQ", "Nasdaq 100"], ["VTI", "Total Market"], ["DIA", "Dow Jones"], ["IWM", "Russell 2000"], ["VOO", "S&P 500 (Vanguard)"]] },
-  { title: "Bond ETFs", items: [["TLT", "20+Y Treasury"], ["BND", "Total Bond Market"], ["AGG", "US Aggregate Bond"], ["HYG", "High Yield Corp"], ["IEF", "7-10Y Treasury"], ["LQD", "Investment Grade Corp"]] },
-  { title: "Crypto", items: [["BINANCE:BTCUSDT", "Bitcoin"], ["BINANCE:ETHUSDT", "Ethereum"], ["BINANCE:SOLUSDT", "Solana"], ["BINANCE:XRPUSDT", "XRP"], ["BINANCE:DOGEUSDT", "Dogecoin"], ["BINANCE:ADAUSDT", "Cardano"]] },
-];
-
 // ---- DOM refs ----
 const homeTitle = document.getElementById("homeTitle");
 const themeToggle = document.getElementById("themeToggle");
 const tickerInput = document.getElementById("tickerInput");
 const searchBtn = document.getElementById("searchBtn");
 const homeView = document.getElementById("homeView");
-const homeGrid = document.getElementById("homeGrid");
-const moversBubbles = document.getElementById("moversBubbles");
 const dashboard = document.getElementById("dashboard");
 const statusEl = document.getElementById("status");
 
@@ -184,148 +172,6 @@ function formatRelativeTime(date) {
 function displaySymbol(symbol) {
   if (symbol.startsWith("BINANCE:")) return symbol.replace("BINANCE:", "").replace("USDT", "");
   return symbol;
-}
-
-// ---- Home page ----
-async function renderHomePage() {
-  homeGrid.innerHTML = "";
-  const allResults = []; // {symbol, name, quote}
-
-  const categoryBoxes = HOME_CATEGORIES.map(cat => {
-    const section = document.createElement("div");
-    section.className = "home-category";
-
-    const h = document.createElement("h3");
-    h.textContent = cat.title;
-    const trendBadge = document.createElement("span");
-    trendBadge.className = "category-trend";
-    trendBadge.textContent = "--";
-    h.appendChild(trendBadge);
-    section.appendChild(h);
-
-    const row = document.createElement("div");
-    row.className = "home-chip-row";
-    cat.items.forEach(([symbol, name]) => {
-      const chip = document.createElement("button");
-      chip.className = "home-chip";
-      chip.dataset.symbol = symbol;
-      chip.innerHTML = `
-        <span class="home-chip-name">${name}</span>
-        <span class="home-chip-symbol">${displaySymbol(symbol)}</span>
-        <span class="home-chip-price">--</span>
-      `;
-      chip.addEventListener("click", () => loadTicker(symbol));
-      row.appendChild(chip);
-    });
-
-    section.appendChild(row);
-    homeGrid.appendChild(section);
-    return { section, trendBadge, cat, loaded: false };
-  });
-
-  const newsBox = document.createElement("div");
-  newsBox.className = "home-category market-news-box";
-  const newsH = document.createElement("h3");
-  newsH.textContent = "Market News";
-  newsBox.appendChild(newsH);
-  const newsList = document.createElement("div");
-  newsList.id = "homeNewsList";
-  newsList.innerHTML = '<p class="muted">Loading...</p>';
-  newsBox.appendChild(newsList);
-  homeGrid.appendChild(newsBox);
-
-  fetchJSON(finnhubUrl("/news", { category: "general" }))
-    .then(items => renderNews(items.slice(0, 8), newsList))
-    .catch(() => { newsList.innerHTML = '<p class="muted">Couldn\'t load market news right now.</p>'; });
-
-  // Only fetch a category's ~6 quotes once its box actually scrolls near
-  // the viewport, instead of firing all 7 categories' ~42 requests the
-  // instant the page loads. rootMargin starts the fetch ~400px before it
-  // comes into view, so data is usually ready by the time you see it.
-  // `loadSequence` still staggers whichever categories fire close
-  // together (e.g. everything visible on first load) so even that
-  // initial batch doesn't land in the same instant.
-  let loadSequence = 0;
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const box = categoryBoxes.find(b => b.section === entry.target);
-      if (!box || box.loaded) return;
-      box.loaded = true;
-      observer.unobserve(box.section);
-      loadCategoryQuotes(box, loadSequence++, allResults);
-    });
-  }, { rootMargin: "400px" });
-
-  categoryBoxes.forEach(box => observer.observe(box.section));
-}
-
-async function loadCategoryQuotes({ section, trendBadge, cat }, sequenceIndex, allResults) {
-  await new Promise(resolve => setTimeout(resolve, sequenceIndex * 200));
-
-  const results = await Promise.allSettled(cat.items.map(async ([symbol, name]) => {
-    const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
-    return { symbol, name, quote: q };
-  }));
-
-  const changes = [];
-  results.forEach(r => {
-    if (r.status !== "fulfilled") return;
-    const { symbol, name, quote } = r.value;
-    if (!isNum(quote.c) || quote.c === 0) return;
-    updateHomeChip(section, symbol, quote);
-    changes.push(quote.dp ?? 0);
-    allResults.push({ symbol, name, quote });
-  });
-
-  if (changes.length > 0) {
-    const avg = changes.reduce((a, b) => a + b, 0) / changes.length;
-    trendBadge.textContent = `${avg >= 0 ? "▲" : "▼"} ${Math.abs(avg).toFixed(1)}%`;
-    trendBadge.className = "category-trend " + (avg >= 0 ? "positive" : "negative");
-  } else {
-    trendBadge.textContent = "";
-  }
-
-  // Render movers progressively as each category finishes, rather than
-  // waiting on every category (which may never all load if some are
-  // scrolled to only much later, or not at all).
-  renderMovers(allResults);
-}
-
-function updateHomeChip(section, symbol, quote) {
-  const chip = section.querySelector(`.home-chip[data-symbol="${symbol}"]`);
-  if (!chip) return;
-  const priceEl2 = chip.querySelector(".home-chip-price");
-  const change = quote.dp ?? 0;
-  priceEl2.textContent = `${formatCurrency(quote.c)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
-  priceEl2.className = "home-chip-price " + (change >= 0 ? "positive" : "negative");
-}
-
-function renderMovers(allResults) {
-  if (!allResults || allResults.length === 0) {
-    moversBubbles.innerHTML = '<p class="muted">Couldn\'t load today\'s movers.</p>';
-    return;
-  }
-
-  const top = [...allResults]
-    .sort((a, b) => Math.abs(b.quote.dp ?? 0) - Math.abs(a.quote.dp ?? 0))
-    .slice(0, 10);
-
-  const maxAbs = Math.max(...top.map(r => Math.abs(r.quote.dp ?? 0)), 1);
-
-  moversBubbles.innerHTML = "";
-  top.forEach(({ symbol, quote }) => {
-    const change = quote.dp ?? 0;
-    const size = 56 + (Math.abs(change) / maxAbs) * 64;
-    const bubble = document.createElement("button");
-    bubble.className = "mover-bubble " + (change >= 0 ? "mover-up" : "mover-down");
-    bubble.style.width = `${size}px`;
-    bubble.style.height = `${size}px`;
-    bubble.title = `${displaySymbol(symbol)}: ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
-    bubble.innerHTML = `<span class="mover-symbol">${displaySymbol(symbol)}</span><span class="mover-change">${change >= 0 ? "+" : ""}${change.toFixed(1)}%</span>`;
-    bubble.addEventListener("click", () => loadTicker(symbol));
-    moversBubbles.appendChild(bubble);
-  });
 }
 
 // ---- Main flow ----
@@ -1137,4 +983,3 @@ document.getElementById("rangeHelpBtn").addEventListener("click", () => showTool
 document.getElementById("rsiHelpBtn").addEventListener("click", () => showTooltip("RSI (14)", "rsi"));
 document.getElementById("macdHelpBtn").addEventListener("click", () => showTooltip("MACD (12, 26, 9)", "macd"));
 document.getElementById("sharesHelpBtn").addEventListener("click", () => showTooltip("Shares Breakdown", "sharesBreakdown"));
-renderHomePage();

@@ -285,8 +285,59 @@ toggling so only one of home/dashboard/compare is ever visible — if a
 new top-level view is added later, remember to hide it from those two
 functions too, or it'll stay visible when navigating away.
 
+## Tabbed home page + FRED/CoinGecko (2026-08-04)
+
+Replaced the old all-categories-at-once scrolling home page (`renderHomePage`
+et al. in `script.js`) with `home.js`: a tab bar (Winners/Losers/Most
+Active + the 7 curated categories + Macro) where **only the active tab's
+data is fetched**, cached in `homeState.quotes` for the session so
+revisiting a tab is free. Winners/Losers/Most Active need every
+category's data to rank, so visiting one of those for the first time
+triggers fetching whatever categories aren't loaded yet (staggered, same
+200ms-per-category pattern as before). Default tab is a cheap static
+category (`trending-tech`), not a dynamic one — keeps the common case
+(look at one or two tabs) cheap; only picking a dynamic tab pays the
+full-category-set cost.
+
+"Most Active" is **not** volume-based — Finnhub's `/quote` has no volume
+field, and fetching it separately would double requests for a homepage
+feature. It's ranked by absolute size of today's price move instead, with
+a disclosed caveat in the UI. Don't present it as real volume-based
+"most active" without adding a real volume data source first.
+
+**Heatmap view**: uniform-size color-intensity tiles, not a true
+size-weighted treemap (that needs market cap for all ~40+ symbols shown
+across tabs, which isn't available without doubling requests via
+profile2 calls). `heatColor()` in `home.js` maps % change to opacity.
+
+**Crypto now uses CoinGecko, not Finnhub** — confirmed CoinGecko has real
+CORS support AND a genuine batch endpoint (`/simple/price?ids=a,b,c`,
+all coins in one request), unlike Finnhub's crypto quotes (one call per
+symbol, and generally worse-supported). `CRYPTO_COINGECKO_IDS` in
+`home.js` maps the existing `BINANCE:*` symbol strings to CoinGecko coin
+ids. CoinGecko's key is optional (public endpoint works without one, just
+lower shared rate limit) — `worker.js`'s `proxy()` has a `keyRequired`
+parameter specifically for this (defaults `true` for Finnhub/Twelve
+Data/FRED, `false` for CoinGecko) — don't remove that or an unconfigured
+COINGECKO_API_KEY will 500 instead of falling back to the public tier.
+
+**Macro tab (FRED)**: confirmed FRED has zero CORS support (unlike
+Finnhub/Twelve Data/CoinGecko) — even local dev must go through the
+deployed Worker for this one, via the hardcoded `FRED_PROXY_BASE` in
+`home.js`. `worker.js`'s proxy responses now set
+`access-control-allow-origin: *` specifically to make this cross-origin
+call work; that header is intentionally permissive since the data
+returned isn't sensitive and the real secrets never leave the Worker
+either way. Four series shown: `FEDFUNDS`, `CPIAUCSL` (fetched with
+`units=pc1` for year-over-year % change, not the raw index), `UNRATE`,
+`DGS10` — verified response shape and values directly before building
+against them.
+
 ## Config / secrets
 
-`config.js` holds the real Finnhub (and optional Twelve Data) API keys and
-is gitignored. `config.example.js` is the tracked template — copy it to
-`config.js` and fill in the keys, per README.md.
+`config.js` holds the real Finnhub, Twelve Data, FRED, and CoinGecko API
+keys and is gitignored. `config.example.js` is the tracked template —
+copy it to `config.js` and fill in the keys, per README.md. FRED and
+CoinGecko keys also need to be added as Cloudflare secrets (same as the
+other two) for the deployed site to use them — see README's Deploying
+section.

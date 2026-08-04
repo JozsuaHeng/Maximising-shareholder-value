@@ -40,12 +40,22 @@
 <section id="homeView" class="home-view">
   <div class="home-decor" aria-hidden="true"></div>
 
-  <div class="card movers-card">
-    <h3>Today's Movers <span class="card-subtitle">(biggest swings across every category below)</span></h3>
-    <div id="moversBubbles" class="movers-bubbles"><p class="muted">Loading...</p></div>
+  <div class="home-controls">
+    <div id="homeTabs" class="home-tabs"></div>
+    <div id="homeViewToggle" class="home-view-toggle">
+      <button type="button" class="active" data-mode="grid">Grid</button>
+      <button type="button" data-mode="heatmap">Heatmap</button>
+    </div>
   </div>
 
-  <div id="homeGrid" class="home-grid"></div>
+  <div class="card home-tab-card">
+    <div id="homeContent" class="home-content"><p class="muted">Loading...</p></div>
+  </div>
+
+  <div class="card">
+    <h3>Market News</h3>
+    <div id="homeNewsList"><p class="muted">Loading...</p></div>
+  </div>
 </section>
 
 <section id="compareView" class="compare-view hidden">
@@ -280,6 +290,7 @@
 <script src="analysis.js"></script>
 <script src="clock.js"></script>
 <script src="script.js"></script>
+<script src="home.js"></script>
 <script src="chart.js"></script>
 <script src="autocomplete.js"></script>
 <script src="compare.js"></script>

@@ -13,25 +13,29 @@ Plain HTML/CSS/JS. No build tools, no npm install.
 
 1. Open this folder in VS Code.
 2. Get a free API key at [finnhub.io/register](https://finnhub.io/register) (required).
-3. Optionally get a free key at [twelvedata.com/pricing](https://twelvedata.com/pricing) (only needed for the price chart — Finnhub's free plan doesn't include historical charts).
+3. Optionally get a free key at [twelvedata.com/pricing](https://twelvedata.com/pricing) (price chart), [fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys) (Macro tab), and/or [coingecko.com/en/developers/dashboard](https://www.coingecko.com/en/developers/dashboard) (higher crypto rate limit — the Crypto tab works without this one). Each just disables its own feature gracefully if skipped.
 4. Copy `config.example.js` to `config.js` and paste your key(s) in. (`config.js` is gitignored — your real keys never get committed.)
 5. Install the **Live Server** extension (Extensions panel → search "Live Server"). Needed because opening `index.html` directly blocks the API calls (CORS); Live Server runs it on `localhost` instead.
 6. Right-click `index.html` → "Open with Live Server".
 
 ## What's on it
 
-A home page of browsable categories (stocks, ETFs, bond ETFs, crypto)
-with a live "movers" strip and market news. Search (with autocomplete)
-a ticker for a full deep-dive: price chart with RSI/MACD/volume/support-
-resistance and SMA/EMA overlays, valuation/growth/profitability/dividend/
-momentum indicators with sector-aware traffic lights, real financial
-statements and SEC filings, analyst recommendations, similar companies,
-and a rule-based (not AI) outlook. Or compare up to 4 tickers side by
-side. Light/dark themes, mobile-friendly.
+A tabbed home page — curated categories (stocks, ETFs, bond ETFs,
+crypto), dynamically-ranked Winners/Losers/Most Active, a Macro tab (Fed
+funds rate, inflation, unemployment, 10-year treasury via FRED), a
+grid/heatmap view toggle, and market news. Only the tab you're looking at
+gets fetched. Search (with autocomplete) a ticker for a full deep-dive:
+price chart with RSI/MACD/volume/support-resistance and SMA/EMA overlays,
+valuation/growth/profitability/dividend/momentum indicators with
+sector-aware traffic lights, real financial statements and SEC filings,
+analyst recommendations, similar companies, and a rule-based (not AI)
+outlook. Or compare up to 4 tickers side by side. Light/dark themes,
+mobile-friendly.
 
 ## Files
 
 - `index.html` / `style.css` / `script.js` — page + main logic
+- `home.js` — the tabbed home page (categories, Winners/Losers/Most Active, Macro, heatmap)
 - `chart.js` — the price chart and technical-analysis panels
 - `clock.js` — header clock (timezone + market hours)
 - `autocomplete.js` — ticker search suggestions dropdown
