@@ -164,6 +164,23 @@ function formatCount(value) {
   return isNum(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A";
 }
 
+// High-volume news feeds (a heavily-covered stock, or general market
+// news) routinely have 8+ headlines published on the same calendar day,
+// so a date-only stamp made every item in the list look identical even
+// though they were hours apart. Relative time makes the actual spread
+// visible.
+function formatRelativeTime(date) {
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
 function displaySymbol(symbol) {
   if (symbol.startsWith("BINANCE:")) return symbol.replace("BINANCE:", "").replace("USDT", "");
   return symbol;
@@ -962,7 +979,7 @@ function renderNews(newsArr, container) {
     const meta = document.createElement("div");
     meta.className = "news-meta";
     const date = new Date((item.datetime || 0) * 1000);
-    meta.textContent = `${item.source || "Unknown source"} · ${date.toLocaleDateString()}`;
+    meta.textContent = `${item.source || "Unknown source"} · ${formatRelativeTime(date)}`;
 
     row.appendChild(headline);
     row.appendChild(meta);
