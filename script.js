@@ -60,6 +60,7 @@ const financialsContent = document.getElementById("financialsContent");
 const sharesContent = document.getElementById("sharesContent");
 const ownershipContent = document.getElementById("ownershipContent");
 const filingsContent = document.getElementById("filingsContent");
+const insiderContent = document.getElementById("insiderContent");
 const peersContent = document.getElementById("peersContent");
 const newsContent = document.getElementById("newsContent");
 const companyFacts = document.getElementById("companyFacts");
@@ -191,7 +192,7 @@ async function loadTicker(symbol) {
   const fmt = d => d.toISOString().slice(0, 10);
 
   try {
-    const [quote, profile, metricRes, recommendationRes, earningsRes, peersRes, newsRes, financialsRes, filingsRes, earningsCalendarRes] = await Promise.all([
+    const [quote, profile, metricRes, recommendationRes, earningsRes, peersRes, newsRes, financialsRes, filingsRes, earningsCalendarRes, insiderRes] = await Promise.all([
       fetchJSON(finnhubUrl("/quote", { symbol })),
       fetchJSON(finnhubUrl("/stock/profile2", { symbol })),
       fetchJSON(finnhubUrl("/stock/metric", { symbol, metric: "all" })),
@@ -202,6 +203,7 @@ async function loadTicker(symbol) {
       fetchJSON(finnhubUrl("/stock/financials-reported", { symbol, freq: "quarterly" })).catch(() => null),
       fetchJSON(finnhubUrl("/stock/filings", { symbol })).catch(() => []),
       fetchJSON(finnhubUrl("/calendar/earnings", { symbol })).catch(() => null),
+      fetchJSON(finnhubUrl("/stock/insider-transactions", { symbol })).catch(() => null),
     ]);
 
     if (!quote || quote.c === 0) {
@@ -232,6 +234,7 @@ async function loadTicker(symbol) {
     renderShares(profile, financialsRes);
     renderOwnership();
     renderFilings(filingsRes);
+    renderInsiderTransactions(insiderRes);
     renderPeers(peersRes, symbol);
     renderNews(newsRes, newsContent);
     const latestRecommendation = renderRecommendation(recommendationRes);
@@ -762,6 +765,57 @@ function renderFilings(filingsArr) {
   filingsContent.appendChild(note);
 }
 
+function renderInsiderTransactions(data) {
+  const arr = data && Array.isArray(data.data) ? data.data : null;
+  if (!arr || arr.length === 0) {
+    insiderContent.innerHTML = '<p class="muted">No insider transaction data available for this symbol (common for non-US-listed companies, which don\'t file with the SEC).</p>';
+    return;
+  }
+
+  const sorted = [...arr].sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate)).slice(0, 8);
+
+  const table = document.createElement("div");
+  table.className = "earnings-table";
+
+  const header = document.createElement("div");
+  header.className = "earnings-row earnings-header";
+  ["Insider", "Date", "Shares Changed", "Price"].forEach(t => {
+    const c = document.createElement("div");
+    c.textContent = t;
+    header.appendChild(c);
+  });
+  table.appendChild(header);
+
+  sorted.forEach(t => {
+    const row = document.createElement("div");
+    row.className = "earnings-row";
+    const change = t.change;
+    const acquired = isNum(change) ? change > 0 : null;
+
+    const cells = [
+      t.name || "--",
+      t.transactionDate || "--",
+      isNum(change) ? `${change >= 0 ? "+" : ""}${change.toLocaleString()}` : "N/A",
+      isNum(t.transactionPrice) && t.transactionPrice > 0 ? formatCurrency(t.transactionPrice) : "N/A",
+    ];
+    cells.forEach((val, i) => {
+      const c = document.createElement("div");
+      c.textContent = val;
+      if (i === 2 && acquired !== null) c.className = acquired ? "positive" : "negative";
+      row.appendChild(c);
+    });
+    table.appendChild(row);
+  });
+
+  insiderContent.innerHTML = "";
+  insiderContent.appendChild(table);
+
+  const note = document.createElement("p");
+  note.className = "muted small";
+  note.textContent = "From SEC Form 4 filings (executives/directors reporting their own trades). Many of these are routine — scheduled vesting, tax payments, pre-planned trading programs — not necessarily a signal either way.";
+  insiderContent.appendChild(note);
+}
+
 async function renderPeers(peersArr, currentSymbol) {
   const filtered = (peersArr || []).filter(s => s && s.toUpperCase() !== currentSymbol.toUpperCase()).slice(0, 10);
 
@@ -983,3 +1037,4 @@ document.getElementById("rangeHelpBtn").addEventListener("click", () => showTool
 document.getElementById("rsiHelpBtn").addEventListener("click", () => showTooltip("RSI (14)", "rsi"));
 document.getElementById("macdHelpBtn").addEventListener("click", () => showTooltip("MACD (12, 26, 9)", "macd"));
 document.getElementById("sharesHelpBtn").addEventListener("click", () => showTooltip("Shares Breakdown", "sharesBreakdown"));
+document.getElementById("insiderHelpBtn").addEventListener("click", () => showTooltip("Insider Transactions", "insiderTransactions"));

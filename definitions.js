@@ -195,6 +195,13 @@ const DEFINITIONS = {
     low: "A high share of Sell/Strong Sell ratings, or a shrinking Buy count over time, means analysts are broadly pessimistic.",
     sector: "Coverage depth varies a lot by sector and company size — a heavily-covered mega-cap might have 40+ analysts weighing in, while a small-cap might have only 2–3, making each individual rating carry more weight.",
   },
+  insiderTransactions: {
+    what: "Insider Transactions: recent buys/sells of company stock by its own executives and directors, disclosed publicly because SEC rules require it (Form 4 filings) within 2 business days of the trade.",
+    formula: "Not a calculation — a direct record of reported trades, showing the net change in shares held.",
+    high: "Clusters of insiders buying (especially open-market purchases, using their own money) is sometimes read as a vote of confidence — though it's a soft signal, not proof of anything.",
+    low: "Clusters of insiders selling is often routine (scheduled trading plans, tax payments, diversification) rather than a warning sign — worth more attention only if many insiders sell around the same time for no obvious routine reason.",
+    sector: "Insider selling is especially normal (and not very informative) right after an IPO or lock-up expiration, or at companies that pay executives heavily in stock — selling some to cover taxes or diversify isn't a red flag in those contexts the way it might be elsewhere.",
+  },
   fiftyTwoWeekRangeContext: {
     what: "Why the 52-week range matters: it's the simplest available gauge of how volatile the stock has been, and where today's price sits within its own recent trading history. Many traders also watch the exact high/low as psychological levels — round numbers or prior extremes where buying/selling has clustered before.",
     formula: "Not a calculation — it's just today's price mapped onto the (52-week low, 52-week high) range.",

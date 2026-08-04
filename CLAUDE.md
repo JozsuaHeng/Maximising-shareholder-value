@@ -341,3 +341,53 @@ copy it to `config.js` and fill in the keys, per README.md. FRED and
 CoinGecko keys also need to be added as Cloudflare secrets (same as the
 other two) for the deployed site to use them — see README's Deploying
 section.
+
+## Chart range fix (2026-08-04)
+
+Found and fixed a real bug: `RANGE_CONFIGS` in `chart.js` used range
+labels (1H, 4H) to mean "bar granularity," not "time window shown" — "1H"
+was 100 *hourly* bars (~3 weeks of data), not the last hour. That
+mismatch between what the label said and what was actually plotted is
+why those charts looked chaotic (many session-gap breaks, no obvious
+pattern). Fixed so every range means what it says: 1H = last 60
+one-minute bars, 4H = last 48 five-minute bars, 1D = one full trading
+session (78 five-minute bars), 1W = ~5 trading days (65 thirty-minute
+bars), 3M/6M = daily bars over that many months. `1M`/`1Y` were dropped
+per the user's requested button set: 1H, 4H, 1D, 1W, 3M, 6M (also added
+`"1min"` to `INTERVAL_MS` for the new 1H range's gap-detection to work).
+
+## Insider transactions (2026-08-04)
+
+Added via Finnhub's `/stock/insider-transactions` (confirmed free tier).
+Shows name, date, net share change (colored by sign — not by the SEC
+transaction code, since the sign already says whether shares were
+acquired or disposed), and price. Deliberately does NOT try to interpret
+transaction codes as bullish/bearish beyond that — many insider sales are
+routine (vesting, taxes, 10b5-1 plans) and the UI note says so.
+
+## Background pre-warming: Cron + KV (2026-08-04)
+
+Rate-limit fixes up to this point only reduced how often the ceiling got
+hit; this is the structural fix. `worker.js` now has a `scheduled()`
+handler (cron trigger in `wrangler.jsonc`, every 5 minutes) that
+proactively fetches all `PREWARM_SYMBOLS` (must stay in sync with
+`HOME_CATEGORIES` in `home.js`, minus crypto) plus one CoinGecko batch
+call, writing results into a KV namespace bound as `HOME_CACHE`.
+`handleFinnhub()`/`handleCoinGecko()` check KV first for matching
+requests before falling through to the normal live-fetch-and-cache path
+— so real user requests for curated symbols are typically served from KV
+and never touch Finnhub/CoinGecko's rate limits at all.
+
+Chose KV over the existing Cache API for this specifically because Cache
+API is per-edge-location — a cron run executing in one location wouldn't
+warm the cache for a visitor hitting a different one. KV is globally
+readable, which is what a background-prewarm pattern actually needs.
+
+**Requires a KV namespace the user has to create via the Cloudflare
+dashboard** (can't be provisioned from code/API access available here) —
+`wrangler.jsonc`'s `kv_namespaces[0].id` is a placeholder
+(`REPLACE_WITH_YOUR_KV_NAMESPACE_ID`) until they provide the real ID. All
+KV access in `worker.js` is guarded with `if (env.HOME_CACHE)` checks, so
+nothing breaks if the binding isn't set up yet — the app just runs
+exactly as it did before this feature, without the speedup. Don't remove
+those guards; a missing binding would otherwise throw on every request.

@@ -16,20 +16,26 @@
 // support/resistance is a simple local-extrema clustering heuristic,
 // explicitly labeled as such, not authoritative.
 
+// Each range means what its label says — the *last N of actual time*,
+// not "bars at N granularity" (that was the original bug: "1H" used to
+// mean 100 hourly bars, ~3 weeks of data, not the last hour — which is
+// why it looked chaotic). Bar size is chosen so a window is covered by a
+// sensible number of points, not so it becomes literally "1 bar per
+// label," which is why 1D/1W/3M use finer bars than their name.
 const RANGE_CONFIGS = {
-  "1D": { interval: "5min", outputsize: 80 },
-  "1H": { interval: "1h", outputsize: 100 },
-  "4H": { interval: "4h", outputsize: 100 },
-  "1W": { interval: "30min", outputsize: 90 },
-  "1M": { interval: "1day", outputsize: 22 },
-  "6M": { interval: "1day", outputsize: 130 },
-  "1Y": { interval: "1day", outputsize: 252 },
+  "1H": { interval: "1min", outputsize: 60 },   // last 60 one-minute bars
+  "4H": { interval: "5min", outputsize: 48 },   // last 48 five-minute bars
+  "1D": { interval: "5min", outputsize: 78 },   // one full trading session (6.5h)
+  "1W": { interval: "30min", outputsize: 65 },  // ~5 trading days
+  "3M": { interval: "1day", outputsize: 63 },   // ~3 months of trading days
+  "6M": { interval: "1day", outputsize: 130 },  // ~6 months of trading days
 };
 
 const PAD_LEFT = 56;
 const PAD_RIGHT = 10;
 
 const INTERVAL_MS = {
+  "1min": 1 * 60000,
   "5min": 5 * 60000,
   "30min": 30 * 60000,
   "1h": 60 * 60000,

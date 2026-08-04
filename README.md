@@ -76,6 +76,26 @@ files without touching the Worker at all.
 GitHub Pages can't do this — it only serves static files, no server-side
 code — which is why enabling it earlier showed blank data everywhere.
 
+### Optional: background pre-warming (Cloudflare KV)
+
+A scheduled job (`scheduled()` in `worker.js`, runs every 5 minutes per
+`wrangler.jsonc`'s cron trigger) can refresh the home page's data in the
+background, so real visitors read from a warm cache instead of ever
+calling Finnhub/CoinGecko directly on page load. This needs a KV
+namespace (Cloudflare's key-value store) that can't be created from code:
+
+1. Cloudflare dashboard → **Storage & Databases → KV → Create a namespace**
+   (name it anything, e.g. `stock-dashboard-cache`).
+2. Copy the **Namespace ID** it gives you.
+3. Put that ID into `wrangler.jsonc`, replacing
+   `REPLACE_WITH_YOUR_KV_NAMESPACE_ID` in the `kv_namespaces` block, then
+   commit and push (or just hand the ID over and it'll get wired in).
+4. After the next deploy, the binding should show up automatically under
+   your Worker's **Settings → Bindings**.
+
+Without this, everything still works exactly as before — it's a pure
+speed/resilience upgrade, not a requirement.
+
 ## Notes
 
 - **Rate limits**: Finnhub's free tier is 60 calls/min; a ticker search
