@@ -757,17 +757,22 @@ function renderShares(profile, financialsRes) {
   const legend = document.createElement("div");
   legend.className = "shares-legend";
   const rows = [
-    ["Total Shares Outstanding (M)", formatCount(total)],
-    isNum(float) ? ["Public Float (M)", formatCount(float)] : null,
-    isNum(basic) ? ["Weighted Avg. Basic Shares (M)", formatCount(basic / 1e6)] : null,
-    isNum(diluted) ? ["Weighted Avg. Diluted Shares (M)", formatCount(diluted / 1e6)] : null,
+    ["Total Shares Outstanding (M)", formatCount(total), "sharesOutstandingTotal"],
+    isNum(float) ? ["Public Float (M)", formatCount(float), "publicFloat"] : null,
+    isNum(basic) ? ["Weighted Avg. Basic Shares (M)", formatCount(basic / 1e6), "weightedAvgBasicShares"] : null,
+    isNum(diluted) ? ["Weighted Avg. Diluted Shares (M)", formatCount(diluted / 1e6), "weightedAvgDilutedShares"] : null,
   ].filter(Boolean);
-  rows.forEach(([label, value]) => {
+  rows.forEach(([label, value, defKey]) => {
     const row = document.createElement("div");
     row.className = "shares-row";
     const l = document.createElement("span");
     l.className = "shares-row-label";
     l.textContent = label;
+    const helpBtn = document.createElement("button");
+    helpBtn.className = "help-btn";
+    helpBtn.textContent = "?";
+    helpBtn.addEventListener("click", () => showTooltip(label.replace(" (M)", ""), defKey));
+    l.appendChild(helpBtn);
     const v = document.createElement("span");
     v.className = "shares-row-value";
     v.textContent = value;
@@ -791,6 +796,36 @@ function renderOwnership() {
   `;
 }
 
+// Plain-English name + one-line description for the SEC form types that
+// actually show up here in practice (10-K/10-Q/8-K are prioritized below,
+// but less common ones can still appear). Anything not in this list falls
+// back to a generic description rather than showing a bare, meaningless
+// code — addressing "when users click the link, it doesn't really mean
+// anything."
+const FILING_TYPE_INFO = {
+  "10-K": { name: "Annual Report", desc: "Full-year financial results, risk factors, and a detailed look at the whole business — the most complete filing a company makes, once a year." },
+  "10-K/A": { name: "Annual Report (Amended)", desc: "A correction or update to a previously filed annual report." },
+  "10-Q": { name: "Quarterly Report", desc: "Financial results for the past three months. Less detailed than the annual report; filed three times a year (the fourth quarter is covered by the 10-K instead)." },
+  "10-Q/A": { name: "Quarterly Report (Amended)", desc: "A correction or update to a previously filed quarterly report." },
+  "8-K": { name: "Major Event Notice", desc: "Filed within days of something significant happening — an acquisition, executive change, earnings release, or similar — whenever it occurs, not on a fixed schedule." },
+  "DEF 14A": { name: "Proxy Statement", desc: "Sent to shareholders ahead of the annual meeting. Covers executive pay, board elections, and anything shareholders are being asked to vote on." },
+  "DEFA14A": { name: "Proxy Statement (Additional)", desc: "Extra material related to an upcoming shareholder vote, filed alongside or after the main proxy statement." },
+  "S-1": { name: "IPO Registration", desc: "Filed before a company's stock starts trading publicly, to register the shares with the SEC." },
+  "S-3": { name: "Securities Registration", desc: "A streamlined filing for registering new stock or debt, used by companies that already file regularly." },
+  "S-8": { name: "Employee Stock Plan Registration", desc: "Registers shares set aside for employee compensation plans (stock options, RSUs, etc.)." },
+  "4": { name: "Insider Transaction", desc: "An individual insider — an executive, director, or major shareholder — reporting a purchase or sale of company stock." },
+  "3": { name: "Initial Insider Ownership", desc: "An executive, director, or major shareholder's first report of how much company stock they own." },
+  "SC 13G": { name: "Large Shareholder Disclosure", desc: "Filed by an investor who has passively acquired 5%+ of the company's shares." },
+  "SC 13D": { name: "Large Shareholder Disclosure (Active)", desc: "Filed by an investor who has acquired 5%+ of the company's shares and may be seeking to influence the company." },
+  "11-K": { name: "Employee Stock Plan Annual Report", desc: "Yearly financial report for the company's employee stock purchase or retirement plan." },
+};
+
+function getFilingInfo(form) {
+  if (FILING_TYPE_INFO[form]) return FILING_TYPE_INFO[form];
+  if (form && form.startsWith("424B")) return { name: "Prospectus", desc: "Details the terms of a securities offering — what's being sold, at what price, and to whom." };
+  return { name: form || "SEC Filing", desc: "A filing type this dashboard doesn't have a plain-English description for yet — open it on EDGAR to see the actual content." };
+}
+
 function renderFilings(filingsArr) {
   if (!filingsArr || filingsArr.length === 0) {
     filingsContent.innerHTML = '<p class="muted">No SEC filings found for this symbol (common for non-US-listed companies).</p>';
@@ -806,22 +841,44 @@ function renderFilings(filingsArr) {
   const list = document.createElement("div");
   list.className = "filings-list";
   sorted.forEach(f => {
+    const info = getFilingInfo(f.form);
+
     const row = document.createElement("a");
     row.className = "filing-item";
     row.href = f.filingUrl || f.reportUrl;
     row.target = "_blank";
     row.rel = "noopener noreferrer";
 
+    const top = document.createElement("div");
+    top.className = "filing-item-top";
+
     const badge = document.createElement("span");
     badge.className = "filing-form";
     badge.textContent = f.form || "?";
+
+    const name = document.createElement("span");
+    name.className = "filing-name";
+    name.textContent = info.name;
 
     const date = document.createElement("span");
     date.className = "filing-date";
     date.textContent = f.filedDate ? f.filedDate.slice(0, 10) : "--";
 
-    row.appendChild(badge);
-    row.appendChild(date);
+    top.appendChild(badge);
+    top.appendChild(name);
+    top.appendChild(date);
+
+    const desc = document.createElement("p");
+    desc.className = "filing-desc";
+    desc.textContent = info.desc;
+
+    const linkCue = document.createElement("span");
+    linkCue.className = "filing-link-cue";
+    linkCue.textContent = "View the actual filing on SEC EDGAR ↗";
+
+    row.appendChild(top);
+    row.appendChild(desc);
+    row.appendChild(linkCue);
     list.appendChild(row);
   });
 
@@ -830,7 +887,7 @@ function renderFilings(filingsArr) {
 
   const note = document.createElement("p");
   note.className = "muted small";
-  note.textContent = "Links go straight to the real filing on SEC EDGAR. This dashboard doesn't parse out sections like risk factors automatically — 10-Ks are long, unstructured legal documents; open the filing to read those directly.";
+  note.textContent = "Descriptions above explain what each filing type generally contains. This dashboard doesn't parse out sections like risk factors automatically — 10-Ks and other filings are long, unstructured legal documents; open the filing to read those directly.";
   filingsContent.appendChild(note);
 }
 

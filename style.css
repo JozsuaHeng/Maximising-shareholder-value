@@ -750,24 +750,35 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
 }
 .shares-legend { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 200px; }
 .shares-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
-.shares-row-label { color: var(--text-secondary); }
+.shares-row-label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
 .shares-row-value { color: var(--text-primary); font-weight: 600; }
 
 /* ---- SEC filings ---- */
-.filings-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.filings-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .filing-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 12px;
-  border-radius: 20px;
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg-surface-2);
   text-decoration: none;
-  font-size: 12px;
+  color: inherit;
   transition: border-color 0.15s ease;
 }
 .filing-item:hover { border-color: var(--accent); }
-.filing-form { font-weight: 700; color: var(--accent); }
-.filing-date { color: var(--text-muted); }
+.filing-item-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+.filing-form {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.filing-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.filing-date { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+.filing-desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px; }
+.filing-link-cue { font-size: 11px; color: var(--accent); }
 
 /* ---- Responsive ---- */
 @media (max-width: 900px) {
