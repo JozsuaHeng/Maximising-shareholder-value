@@ -16,17 +16,25 @@ function isNum(v) {
 function generateOutlook({ symbol, quote, metric, recommendation }) {
   const bullets = [];
   let score = 0;
+  // Tracks which specific factor drove each score change, so the headline
+  // can name what's actually going on ("led by profitability") instead of
+  // always falling back to the same three fixed sentences — see headline
+  // logic below. Only factors that moved the score get tracked; purely
+  // informational bullets (beta, dividend, mid-range price) don't.
+  const factors = [];
 
   const pe = metric.peTTM;
   if (isNum(pe)) {
     if (pe > 30) {
       bullets.push(`P/E of ${pe.toFixed(1)} is on the higher side — the market is pricing in meaningful growth expectations, or the stock may simply be richly valued relative to current earnings.`);
       score -= 0.5;
+      factors.push({ name: "its rich valuation", delta: -0.5 });
     } else if (pe < 10) {
       bullets.push(`P/E of ${pe.toFixed(1)} is on the lower side — this can point to undervaluation, or reflect market caution about future earnings.`);
     } else {
       bullets.push(`P/E of ${pe.toFixed(1)} sits in a fairly typical range, not signaling extreme optimism or pessimism on its own.`);
       score += 0.5;
+      factors.push({ name: "a reasonable valuation", delta: 0.5 });
     }
   }
 
@@ -35,12 +43,15 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (de > 1.5) {
       bullets.push(`Debt-to-Equity of ${de.toFixed(2)} indicates fairly high leverage — more financial risk if earnings soften or borrowing costs rise.`);
       score -= 0.5;
+      factors.push({ name: "high leverage", delta: -0.5 });
     } else if (de < 0.5) {
       bullets.push(`Debt-to-Equity of ${de.toFixed(2)} is conservative — the company relies mostly on its own capital rather than borrowing.`);
       score += 0.5;
+      factors.push({ name: "a conservative balance sheet", delta: 0.5 });
     } else {
       bullets.push(`Debt-to-Equity of ${de.toFixed(2)} is a moderate, fairly typical level of leverage.`);
       score += 0.25;
+      factors.push({ name: "typical leverage", delta: 0.25 });
     }
   }
 
@@ -49,9 +60,11 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (roe > 15) {
       bullets.push(`Return on Equity of ${roe.toFixed(1)}% is strong — shareholder capital is being turned into profit efficiently.`);
       score += 0.5;
+      factors.push({ name: "strong profitability", delta: 0.5 });
     } else if (roe < 5) {
       bullets.push(`Return on Equity of ${roe.toFixed(1)}% is on the weak side.`);
       score -= 0.5;
+      factors.push({ name: "weak profitability", delta: -0.5 });
     }
   }
 
@@ -60,9 +73,11 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (netMargin > 15) {
       bullets.push(`Net margin of ${netMargin.toFixed(1)}% is healthy — a good share of revenue converts into actual profit.`);
       score += 0.5;
+      factors.push({ name: "healthy margins", delta: 0.5 });
     } else if (netMargin < 5) {
       bullets.push(`Net margin of ${netMargin.toFixed(1)}% is thin — most revenue is being absorbed by costs.`);
       score -= 0.5;
+      factors.push({ name: "thin margins", delta: -0.5 });
     }
   }
 
@@ -71,9 +86,11 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (revGrowth > 15) {
       bullets.push(`Revenue grew ${revGrowth.toFixed(1)}% year-over-year — strong top-line momentum.`);
       score += 0.5;
+      factors.push({ name: "strong revenue growth", delta: 0.5 });
     } else if (revGrowth < 0) {
       bullets.push(`Revenue shrank ${Math.abs(revGrowth).toFixed(1)}% year-over-year — worth understanding whether that's company-specific or an industry-wide slowdown.`);
       score -= 0.5;
+      factors.push({ name: "shrinking revenue", delta: -0.5 });
     }
   }
 
@@ -82,9 +99,11 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (vsMarket > 5) {
       bullets.push(`Outperforming the S&P 500 by ${vsMarket.toFixed(1)} points over the last 13 weeks — recent relative strength.`);
       score += 0.25;
+      factors.push({ name: "recent relative strength", delta: 0.25 });
     } else if (vsMarket < -5) {
       bullets.push(`Underperforming the S&P 500 by ${Math.abs(vsMarket).toFixed(1)} points over the last 13 weeks — recent relative weakness.`);
       score -= 0.25;
+      factors.push({ name: "recent relative weakness", delta: -0.25 });
     }
   }
 
@@ -111,9 +130,11 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     if (pct > 0.85) {
       bullets.push(`Trading near its 52-week high (${(pct * 100).toFixed(0)}% of the way up the range) — a sign of recent momentum, though it also means less room below before hitting new highs.`);
       score += 0.25;
+      factors.push({ name: "momentum near its 52-week high", delta: 0.25 });
     } else if (pct < 0.15) {
       bullets.push(`Trading near its 52-week low (${(pct * 100).toFixed(0)}% of the way up the range) — worth understanding whether that reflects a temporary setback or a deeper problem.`);
       score -= 0.25;
+      factors.push({ name: "being stuck near its 52-week low", delta: -0.25 });
     } else {
       bullets.push(`Trading roughly in the middle of its 52-week range.`);
     }
@@ -127,18 +148,36 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
       const sellShare = (strongSell + sell) / total;
       const tilt = buyShare > 0.5 ? "bullish" : sellShare > 0.5 ? "bearish" : "mixed";
       bullets.push(`Analysts covering ${symbol} lean ${tilt} — ${strongBuy + buy} Buy/Strong Buy vs. ${strongSell + sell} Sell/Strong Sell out of ${total} ratings.`);
-      if (buyShare > 0.5) score += 0.5;
-      else if (sellShare > 0.5) score -= 0.5;
+      if (buyShare > 0.5) { score += 0.5; factors.push({ name: "bullish analyst sentiment", delta: 0.5 }); }
+      else if (sellShare > 0.5) { score -= 0.5; factors.push({ name: "bearish analyst sentiment", delta: -0.5 }); }
     }
   }
+
+  // Name the specific factor(s) actually driving the score, rather than
+  // always returning one of three fixed sentences — this is why the
+  // headline used to look identical for most stocks that landed in the
+  // (wide) "mixed" bucket. Still zero extra API cost: everything here is
+  // derived from numbers already fetched for the rest of the page.
+  const topPositive = factors.filter(f => f.delta > 0).sort((a, b) => b.delta - a.delta)[0];
+  const topNegative = factors.filter(f => f.delta < 0).sort((a, b) => a.delta - b.delta)[0];
 
   let headline;
   if (bullets.length === 0) {
     headline = "Not enough data was returned to form a read on this stock.";
   } else if (score > 1.5) {
-    headline = "Taken together, today's numbers lean encouraging.";
+    headline = topPositive
+      ? `Taken together, today's numbers lean encouraging, led by ${topPositive.name}.`
+      : "Taken together, today's numbers lean encouraging.";
   } else if (score < -1) {
-    headline = "Taken together, today's numbers show some caution flags worth digging into.";
+    headline = topNegative
+      ? `Taken together, today's numbers show some caution flags, mainly around ${topNegative.name}.`
+      : "Taken together, today's numbers show some caution flags worth digging into.";
+  } else if (topPositive && topNegative) {
+    headline = `Taken together, today's numbers are mixed: ${topPositive.name} stands out positively, while ${topNegative.name} is worth watching.`;
+  } else if (topPositive) {
+    headline = `Taken together, today's numbers lean mildly positive, with ${topPositive.name} the standout.`;
+  } else if (topNegative) {
+    headline = `Taken together, today's numbers lean mildly cautious, with ${topNegative.name} the main concern.`;
   } else {
     headline = "Taken together, today's numbers are mixed — some positives, some to watch.";
   }
