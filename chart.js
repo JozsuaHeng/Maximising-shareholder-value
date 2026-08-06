@@ -73,6 +73,7 @@ const chartState = {
   series: null,
   sr: null,
   overlays: { sma20: true, sma50: false, ema20: true },
+  chartType: "line",
 };
 
 function chartIsNum(v) {
@@ -121,7 +122,7 @@ Array.from(chartRangeRow.querySelectorAll("button")).forEach(btn => {
   });
 });
 
-Array.from(chartOverlayRow.querySelectorAll("button")).forEach(btn => {
+Array.from(chartOverlayRow.querySelectorAll("button[data-overlay]")).forEach(btn => {
   const key = btn.dataset.overlay;
   btn.classList.toggle("active", chartState.overlays[key]);
   btn.addEventListener("click", () => {
@@ -129,6 +130,13 @@ Array.from(chartOverlayRow.querySelectorAll("button")).forEach(btn => {
     btn.classList.toggle("active", chartState.overlays[key]);
     if (chartState.series) renderAllPanels(chartState.series);
   });
+});
+
+const candleToggleBtn = document.getElementById("candleToggleBtn");
+candleToggleBtn.addEventListener("click", () => {
+  chartState.chartType = chartState.chartType === "candles" ? "line" : "candles";
+  candleToggleBtn.classList.toggle("active", chartState.chartType === "candles");
+  if (chartState.series) renderAllPanels(chartState.series);
 });
 
 window.addEventListener("resize", debounce(() => {
@@ -218,13 +226,33 @@ function showChartUnavailable(message) {
 }
 
 // ---- Shared x-axis mapping ----
-// Intraday: time-proportional (so overnight/closed gaps show as a visual
-// jump, like real trading charts). Daily bars: index-proportional (the
-// convention for daily+ charts — weekends don't get empty space).
+// Single-session intraday (1H/4H/1D): time-proportional, so overnight/
+// closed gaps show as a visual jump, like real trading charts. Daily bars
+// AND 1W: index-proportional instead. 1W spans 5 trading sessions but only
+// ~6.5 of every 24 hours is actual trading time (less on the weekend in
+// between) — a time-proportional axis would give the 4 overnight/weekend
+// gaps most of the width and squeeze each day's real data into a thin
+// sliver, which is exactly what made the 1W chart look "really weird"
+// (found 2026-08-06). Index-based spacing avoids that, same as 3M/6M.
 function getXMapper(series, plotW) {
-  if (series.intraday) {
-    const minT = series.timesMs[0];
-    const maxT = series.timesMs[series.timesMs.length - 1];
+  if (series.intraday && chartState.range !== "1W") {
+    let minT = series.timesMs[0];
+    let maxT = series.timesMs[series.timesMs.length - 1];
+
+    // 1D/4H specifically: extend the axis to the full session window
+    // (4am-8pm) so there's actual pixel space to shade pre-market/
+    // after-hours into. Without this, the axis is tightly bounded to
+    // just the real data points — and since Twelve Data's free tier only
+    // returns bars for 9:30am-4pm, minT/maxT would already equal the
+    // regular-hours boundary, leaving zero width for those bands
+    // (drawSessionShading would compute from >= to and draw nothing).
+    if (chartState.range === "1D" || chartState.range === "4H") {
+      const firstDateStr = series.times[0].slice(0, 10);
+      const lastDateStr = series.times[series.times.length - 1].slice(0, 10);
+      minT = Math.min(minT, parseNaiveTime(`${firstDateStr} 04:00:00`));
+      maxT = Math.max(maxT, parseNaiveTime(`${lastDateStr} 20:00:00`));
+    }
+
     const span = maxT - minT || 1;
     return {
       xFor: i => PAD_LEFT + ((series.timesMs[i] - minT) / span) * plotW,
@@ -252,7 +280,11 @@ function getXMapper(series, plotW) {
 
 // ---- Session shading (pre-market / regular / after-hours) ----
 function drawSessionShading(ctx, series, xmap, padTop, plotH) {
+  // Only 1D/4H: on multi-day intraday ranges (e.g. 1W), one shaded pair
+  // per day turns into a wall of repeating stripes that swamps the actual
+  // price line — this was the root cause of "1W chart looks really weird".
   if (!series.intraday || !xmap.xForTime) return;
+  if (chartState.range !== "1D" && chartState.range !== "4H") return;
 
   const dateSet = new Set(series.times.map(t => t.slice(0, 10)));
   dateSet.forEach(dateStr => {
@@ -271,8 +303,8 @@ function drawSessionShading(ctx, series, xmap, padTop, plotH) {
       ctx.fillRect(x0, padTop, Math.max(x1 - x0, 0), plotH);
     };
 
-    drawBand(preStart, regStart, "rgba(224,171,46,0.07)"); // pre-market: soft amber
-    drawBand(regEnd, afterEnd, "rgba(140,160,200,0.08)"); // after-hours: soft blue-grey
+    drawBand(preStart, regStart, "rgba(224,171,46,0.12)"); // pre-market: soft amber
+    drawBand(regEnd, afterEnd, "rgba(140,160,200,0.13)"); // after-hours: soft blue-grey
   });
 }
 
@@ -416,33 +448,41 @@ function renderPricePanel(series, sr, hoverIdx) {
   sr.resistance.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-critical")));
   sr.support.forEach(level => drawLevelLine(ctx, level, yFor, PAD_LEFT, w - PAD_RIGHT, cssVar("--status-good")));
 
-  // price line + area fill — drawn per session segment (see getSegments)
-  // so overnight/weekend gaps break the line instead of connecting
-  // yesterday's close to today's open with a straight diagonal.
+  // price: either a line + area fill, or candlesticks — drawn per session
+  // segment (see getSegments) so overnight/weekend gaps break the line
+  // instead of connecting yesterday's close to today's open with a
+  // straight diagonal. Candles don't need that treatment since each one
+  // is drawn independently at its own x position; the gap just shows up
+  // as extra horizontal spacing between bars, which is the desired look.
   const segments = getSegments(series);
   const trendUp = closes[closes.length - 1] >= closes[0];
   const lineColor = trendUp ? "#1baf7a" : "#d03b3b";
-  const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
-  gradient.addColorStop(0, trendUp ? "rgba(27,175,122,0.18)" : "rgba(208,59,59,0.18)");
-  gradient.addColorStop(1, "rgba(0,0,0,0)");
 
-  segments.forEach(([segStart, segEnd]) => {
-    ctx.beginPath();
-    for (let i = segStart; i <= segEnd; i++) {
-      const x = xmap.xFor(i), y = yFor(closes[i]);
-      if (i === segStart) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+  if (chartState.chartType === "candles") {
+    drawCandles(ctx, series, xmap, yFor, plotW);
+  } else {
+    const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
+    gradient.addColorStop(0, trendUp ? "rgba(27,175,122,0.18)" : "rgba(208,59,59,0.18)");
+    gradient.addColorStop(1, "rgba(0,0,0,0)");
 
-    ctx.lineTo(xmap.xFor(segEnd), padTop + plotH);
-    ctx.lineTo(xmap.xFor(segStart), padTop + plotH);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
-  });
+    segments.forEach(([segStart, segEnd]) => {
+      ctx.beginPath();
+      for (let i = segStart; i <= segEnd; i++) {
+        const x = xmap.xFor(i), y = yFor(closes[i]);
+        if (i === segStart) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.lineTo(xmap.xFor(segEnd), padTop + plotH);
+      ctx.lineTo(xmap.xFor(segStart), padTop + plotH);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    });
+  }
 
   // overlays: SMA20 / SMA50 / EMA20 (also broken at session gaps)
   const drawOverlay = (values, color) => {
@@ -473,9 +513,12 @@ function renderPricePanel(series, sr, hoverIdx) {
     ctx.fillStyle = lineColor;
     ctx.fill();
 
-    chartTooltipEl.textContent = `${formatChartDate(times[hoverIdx], series.intraday)} · ${chartFormatCurrency(closes[hoverIdx])}`;
+    chartTooltipEl.textContent = chartState.chartType === "candles"
+      ? `${formatChartDate(times[hoverIdx], series.intraday)} · O ${chartFormatCurrency(series.opens[hoverIdx])} H ${chartFormatCurrency(series.highs[hoverIdx])} L ${chartFormatCurrency(series.lows[hoverIdx])} C ${chartFormatCurrency(closes[hoverIdx])}`
+      : `${formatChartDate(times[hoverIdx], series.intraday)} · ${chartFormatCurrency(closes[hoverIdx])}`;
     chartTooltipEl.classList.remove("hidden");
-    const left = Math.min(Math.max(x - 50, 0), w - 120);
+    const tooltipW = chartState.chartType === "candles" ? 230 : 120;
+    const left = Math.min(Math.max(x - 50, 0), w - tooltipW);
     chartTooltipEl.style.left = `${left}px`;
     chartTooltipEl.style.top = `${Math.max(y - 34, 0)}px`;
   } else {
@@ -483,6 +526,36 @@ function renderPricePanel(series, sr, hoverIdx) {
   }
 
   attachHover(priceChartEl, series, plotW);
+}
+
+// ---- Candlestick rendering (alternative to the line+area price view) ----
+// Each candle is drawn independently at its own x position (unlike the
+// line, which needs session-gap-aware segmenting) — a gap between trading
+// sessions just shows up as extra horizontal space between bars, which is
+// the normal look for a candlestick chart.
+function drawCandles(ctx, series, xmap, yFor, plotW) {
+  const n = series.closes.length;
+  const candleW = Math.max(2, Math.min(10, (plotW / n) * 0.6));
+  for (let i = 0; i < n; i++) {
+    const x = xmap.xFor(i);
+    const open = series.opens[i], close = series.closes[i], high = series.highs[i], low = series.lows[i];
+    if (![open, close, high, low].every(chartIsNum)) continue;
+    const up = close >= open;
+    const color = up ? "#1baf7a" : "#d03b3b";
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, yFor(high));
+    ctx.lineTo(x, yFor(low));
+    ctx.stroke();
+
+    const yOpen = yFor(open), yClose = yFor(close);
+    const bodyTop = Math.min(yOpen, yClose);
+    const bodyH = Math.max(1, Math.abs(yOpen - yClose));
+    ctx.fillStyle = color;
+    ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH);
+  }
 }
 
 function drawLevelLine(ctx, level, yFor, xStart, xEnd, color) {
