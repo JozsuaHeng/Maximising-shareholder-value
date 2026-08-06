@@ -256,6 +256,7 @@ async function loadTicker(symbol) {
     setStatus("");
 
     initChart(symbol);
+    initInvestCalc(symbol);
     loadSecondaryData(symbol, profile, myToken);
   } catch (err) {
     if (myToken !== loadToken) return;

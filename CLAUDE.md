@@ -420,6 +420,47 @@ message, which made a transient rate-limit blip look like a broken setup
 pattern (attach `.status`, branch on it) for any new fetch call sites
 that show errors directly to the user.
 
+## Chart shading/1W fix, bigger chart, candlesticks, "What If You'd Invested?" (2026-08-06)
+
+- **Session shading bug**: `drawSessionShading()` had no range gate, so it
+  drew a pre/after-hours stripe pair for every calendar day present in the
+  series — harmless on 1D/4H (one day), but on 1W (5 trading days) it drew
+  5 stripe pairs across the whole width, which combined with the next bug
+  below is what made "1W chart looks really weird." Now gated to
+  `chartState.range === "1D" || "4H"` only, matching the legend text.
+- **1W axis bug**: intraday ranges use a time-proportional x-axis (so
+  overnight gaps show as a jump) — correct for a single session, but wrong
+  for 1W: only ~6.5 of every 24 hours is real trading time, so the 4
+  overnight/weekend gaps ate most of the width and squeezed each day's
+  actual bars into a thin sliver. `getXMapper()` now uses index-based
+  spacing for 1W (same as 3M/6M), so all 5 days render evenly. If a future
+  range spans multiple days at intraday granularity, it needs this same
+  treatment, not the single-session time-proportional path.
+- **Chart size**: price/volume/RSI/MACD canvases enlarged (price:
+  220→340px) per user request.
+- **Candlesticks**: a toggle next to the SMA/EMA overlay buttons
+  (`drawCandles()` in `chart.js`) using the OHLC arrays already captured
+  from Twelve Data's `time_series` response (previously only `closes` was
+  used). SMA/EMA overlay lines still draw on top in candle mode, same as
+  line mode.
+- **"What If You'd Invested?" calculator** (`invest.js`, new file): one
+  years-ago slider (1–10) drives two numbers from the same historical
+  window — a real backward-looking result (what a past investment in this
+  stock actually did, using real closing prices) and an illustrative
+  forward projection (what a new investment could grow to if that same
+  historical annualized growth rate continued). Uses one extra Twelve Data
+  `time_series` call (`outputsize: 2600`, ~10 years of daily bars) fired
+  alongside the chart's own load, not blocking the core dashboard render.
+  Confirmed directly before building that historical dividend data isn't
+  available on the free tier of either data source (`Finnhub
+  /stock/dividend` and Twelve Data `/dividends` both reject the free key)
+  — both numbers are **price return only**, and the UI discloses this
+  rather than fabricating a dividend-reinvestment assumption. The forward
+  projection is heavily caveated as illustrative/historical, explicitly
+  not a prediction, consistent with this project's no-fabricated-forecasts
+  rule (see the "No fabricated forecasts" section above) — don't soften
+  that caveat without a real forward-looking data source behind it.
+
 ## News/ticker-tile visual redesign (2026-08-04)
 
 News items (`renderNews` in script.js) now show a colored initial-letter

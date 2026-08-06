@@ -437,6 +437,61 @@ canvas#priceChart { width: 100%; height: 160px; display: block; }
 .scenario-value.negative { color: var(--negative); font-weight: 600; }
 .scenario-disclaimer { margin-top: 8px; }
 
+/* ---- What If You'd Invested? calculator ---- */
+.invest-controls { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; margin-bottom: 14px; }
+.invest-amount-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.invest-amount-prefix { color: var(--text-muted); }
+.invest-amount-row input[type="number"] {
+  width: 110px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.invest-years-row { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; font-size: 13px; color: var(--text-secondary); }
+.invest-years-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+}
+.invest-years-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-page);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.invest-years-row input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-page);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.invest-result-block { padding: 12px 14px; background: var(--bg-surface-2); border-radius: 8px; margin-bottom: 10px; }
+.invest-result-lead { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.invest-result-lead strong { color: var(--text-primary); }
+.invest-result-figure { font-size: 22px; font-weight: 700; color: var(--text-primary); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.invest-result-figure.positive { color: var(--positive); }
+.invest-result-figure.negative { color: var(--negative); }
+.invest-result-pct { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.invest-projection { border: 1px dashed var(--border); background: transparent; }
+.invest-projection-figure { color: var(--text-primary); }
+.invest-projection-caveat { margin-top: 6px; }
+.invest-note { margin-top: 4px; }
+
 /* Earnings table */
 .earnings-table { display: flex; flex-direction: column; gap: 4px; }
 .earnings-row {
