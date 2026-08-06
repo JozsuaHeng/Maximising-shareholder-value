@@ -391,3 +391,44 @@ KV access in `worker.js` is guarded with `if (env.HOME_CACHE)` checks, so
 nothing breaks if the binding isn't set up yet — the app just runs
 exactly as it did before this feature, without the speedup. Don't remove
 those guards; a missing binding would otherwise throw on every request.
+Real namespace ID (`df39e229e1544feea93c4f806458f93d`) now wired in.
+
+## Chart range semantics fix (2026-08-04)
+
+Found and fixed a real bug: "1H"/"4H" range buttons used to mean "N bars
+at 1-hour/4-hour granularity" (100 hourly bars ≈ 3 weeks of data), not
+"the last 1/4 hours" like the label implies — that mismatch (not the
+session-gap issue, which was a separate earlier bug) is why those charts
+looked chaotic to the user. `RANGE_CONFIGS` in `chart.js` now means what
+the label says: "1H" = last 60 one-minute bars, "4H" = last 48 five-minute
+bars, "1D" = one full trading session (78 five-minute bars, tuned to not
+spill into the prior day), "1W" ≈ 5 trading days, "3M"/"6M" = daily bars.
+Range list changed to 1H/4H/1D/1W/3M/6M per the user's request (dropped
+1M and 1Y). If adding a new range, make sure `outputsize × interval`
+actually equals what the label promises — that's the lesson here.
+
+## Fetch error messages are now specific (2026-08-04)
+
+`fetchJSON()` in script.js now attaches the HTTP status to thrown errors
+(`err.status`), and `loadTicker`'s catch block uses `describeFetchError()`
+to give a specific message: 429 → "rate limit, temporary, wait ~30s";
+401/403 → "check your API key" (with different wording for local vs.
+deployed, since the fix differs); anything else → generic, points at the
+console. Previously all three cases showed the same "check your API key"
+message, which made a transient rate-limit blip look like a broken setup
+— a real support/debugging problem, not just a UX nicety. Keep this
+pattern (attach `.status`, branch on it) for any new fetch call sites
+that show errors directly to the user.
+
+## News/ticker-tile visual redesign (2026-08-04)
+
+News items (`renderNews` in script.js) now show a colored initial-letter
+badge per source (`colorFromString()` — deterministic hash into a fixed
+palette, so the same source always gets the same color) plus an external-
+link cue, addressing "market news looks plain." Home page ticker tiles
+(`buildGrid` in home.js) gained a colored left accent border (green/red
+by direction), a directional arrow, and bolder pricing — addressing "the
+grid looks empty." Deliberately did NOT reintroduce decorative background
+patterns behind the grid itself (removed earlier at the user's request as
+"weird") — the richness comes from the tiles/items themselves, not from
+page-level decoration.

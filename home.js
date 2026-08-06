@@ -223,12 +223,16 @@ function buildGrid(items) {
   items.forEach(({ symbol, name, quote }) => {
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = "home-chip";
     const change = quote.dp ?? 0;
+    const up = change >= 0;
+    chip.className = "home-chip " + (up ? "chip-up" : "chip-down");
     chip.innerHTML = `
       <span class="home-chip-name">${name}</span>
       <span class="home-chip-symbol">${displaySymbol(symbol)}</span>
-      <span class="home-chip-price ${change >= 0 ? "positive" : "negative"}">${formatCurrency(quote.c)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%</span>
+      <span class="home-chip-price ${up ? "positive" : "negative"}">
+        <span class="home-chip-arrow">${up ? "▲" : "▼"}</span>${formatCurrency(quote.c)}
+        <span class="home-chip-pct">${up ? "+" : ""}${change.toFixed(1)}%</span>
+      </span>
     `;
     chip.addEventListener("click", () => loadTicker(symbol));
     row.appendChild(chip);

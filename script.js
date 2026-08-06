@@ -132,7 +132,11 @@ function goHome() {
 // ---- Fetch helper ----
 async function fetchJSON(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`Request failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -151,6 +155,17 @@ function formatCurrency(value) {
 
 function formatCount(value) {
   return isNum(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A";
+}
+
+// Deterministic color per string (e.g. a news source name) — same input
+// always gives the same color, picked from a fixed palette rather than
+// generated freely, so it stays visually consistent with the rest of the
+// theme instead of clashing.
+const BADGE_COLORS = ["#1baf7a", "#2a78d6", "#eb6834", "#9085e9", "#e0ab2e", "#d55181", "#199e70", "#5598e7"];
+function colorFromString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return BADGE_COLORS[hash % BADGE_COLORS.length];
 }
 
 // High-volume news feeds (a heavily-covered stock, or general market
@@ -247,9 +262,26 @@ async function loadTicker(symbol) {
     initChart(symbol);
   } catch (err) {
     console.error(err);
-    setStatus("Something went wrong fetching data. Check your API key and console for details.", true);
+    setStatus(describeFetchError(err), true);
     homeView.classList.remove("hidden");
   }
+}
+
+// Distinguishes the common failure cases instead of one generic message —
+// a 429 (rate limit) is temporary and self-resolving; a 401/403 means the
+// API key itself is wrong or missing; anything else is worth checking the
+// console for. Conflating these made a transient rate-limit blip look
+// exactly like a broken setup.
+function describeFetchError(err) {
+  if (err && err.status === 429) {
+    return "Finnhub's free-tier rate limit (60 requests/minute) was hit — this is temporary. Wait about 30 seconds and search again.";
+  }
+  if (err && (err.status === 401 || err.status === 403)) {
+    return IS_LOCAL_DEV
+      ? "Your Finnhub API key looks invalid or missing — check config.js."
+      : "The site's Finnhub API key looks invalid or missing — check the FINNHUB_API_KEY secret in Cloudflare.";
+  }
+  return "Something went wrong fetching data. Check the browser console (Cmd+Option+I → Console) for details.";
 }
 
 function setStatus(msg, isError = false) {
@@ -872,6 +904,15 @@ function renderNews(newsArr, container) {
     row.target = "_blank";
     row.rel = "noopener noreferrer";
 
+    const source = item.source || "Unknown";
+    const badge = document.createElement("div");
+    badge.className = "news-source-badge";
+    badge.style.background = colorFromString(source);
+    badge.textContent = source.charAt(0).toUpperCase();
+
+    const body = document.createElement("div");
+    body.className = "news-item-body";
+
     const headline = document.createElement("div");
     headline.className = "news-headline";
     headline.textContent = item.headline || "";
@@ -879,10 +920,12 @@ function renderNews(newsArr, container) {
     const meta = document.createElement("div");
     meta.className = "news-meta";
     const date = new Date((item.datetime || 0) * 1000);
-    meta.textContent = `${item.source || "Unknown source"} · ${formatRelativeTime(date)}`;
+    meta.textContent = `${source} · ${formatRelativeTime(date)}`;
 
-    row.appendChild(headline);
-    row.appendChild(meta);
+    body.appendChild(headline);
+    body.appendChild(meta);
+    row.appendChild(badge);
+    row.appendChild(body);
     list.appendChild(row);
   });
   container.appendChild(list);
