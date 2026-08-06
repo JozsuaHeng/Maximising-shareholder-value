@@ -109,6 +109,7 @@ themeToggle.addEventListener("click", () => {
 // ---- Nav ----
 homeTitle.addEventListener("click", goHome);
 searchBtn.addEventListener("click", () => {
+  if (typeof hideSuggestions === "function") hideSuggestions();
   const sym = tickerInput.value.trim().toUpperCase();
   if (sym) loadTicker(sym);
 });
@@ -191,35 +192,40 @@ function displaySymbol(symbol) {
 }
 
 // ---- Main flow ----
+// Split into "core" (quote/profile/metric/recommendation — the ~4 calls
+// needed for the primary dashboard view) and "secondary" (earnings,
+// peers, news, financials, filings, earnings calendar, insider
+// transactions — 7 more calls powering supplementary sections). This
+// used to be one 11-call Promise.all: correct, but slow, and any single
+// failure among all 11 (increasingly likely as more sections were added)
+// reverted the *entire* page back to the home screen, which looked like
+// "search is broken" even though it was really just a Finnhub rate-limit
+// hit on one of eleven simultaneous calls. Now the dashboard renders as
+// soon as the small core batch resolves, and secondary sections fill in
+// progressively — a failure there degrades one section, not the page.
+let loadToken = 0;
+
 async function loadTicker(symbol) {
   if (IS_LOCAL_DEV && FINNHUB_API_KEY === "YOUR_API_KEY_HERE") {
     setStatus("Add your free Finnhub API key to config.js first. See README.md.", true);
     return;
   }
 
+  const myToken = ++loadToken;
   homeView.classList.add("hidden");
   dashboard.classList.add("hidden");
   document.getElementById("compareView").classList.add("hidden");
   setStatus(`Loading ${displaySymbol(symbol)}...`);
 
-  const today = new Date();
-  const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
-  const fmt = d => d.toISOString().slice(0, 10);
-
   try {
-    const [quote, profile, metricRes, recommendationRes, earningsRes, peersRes, newsRes, financialsRes, filingsRes, earningsCalendarRes, insiderRes] = await Promise.all([
+    const [quote, profile, metricRes, recommendationRes] = await Promise.all([
       fetchJSON(finnhubUrl("/quote", { symbol })),
       fetchJSON(finnhubUrl("/stock/profile2", { symbol })),
       fetchJSON(finnhubUrl("/stock/metric", { symbol, metric: "all" })),
       fetchJSON(finnhubUrl("/stock/recommendation", { symbol })).catch(() => []),
-      fetchJSON(finnhubUrl("/stock/earnings", { symbol })).catch(() => []),
-      fetchJSON(finnhubUrl("/stock/peers", { symbol })).catch(() => []),
-      fetchJSON(finnhubUrl("/company-news", { symbol, from: fmt(twoWeeksAgo), to: fmt(today) })).catch(() => []),
-      fetchJSON(finnhubUrl("/stock/financials-reported", { symbol, freq: "quarterly" })).catch(() => null),
-      fetchJSON(finnhubUrl("/stock/filings", { symbol })).catch(() => []),
-      fetchJSON(finnhubUrl("/calendar/earnings", { symbol })).catch(() => null),
-      fetchJSON(finnhubUrl("/stock/insider-transactions", { symbol })).catch(() => null),
     ]);
+
+    if (myToken !== loadToken) return; // a newer search started while this one was in flight
 
     if (!quote || quote.c === 0) {
       setStatus(`No data found for "${symbol}". Check the ticker and try again.`, true);
@@ -234,8 +240,6 @@ async function loadTicker(symbol) {
     renderOverview(symbol, quote, profile);
     renderCompanyFacts(profile);
     renderDescription(profile.name);
-    renderUpcomingEvents(earningsCalendarRes);
-    renderCompanyHeadlines(newsRes);
     renderValuation(metric, profile);
     renderGrowth(metric);
     renderProfitability(metric);
@@ -244,14 +248,6 @@ async function loadTicker(symbol) {
     renderMomentum(metric);
     renderRange(metric);
     renderRangeGauge(metric, quote);
-    renderEarnings(earningsRes);
-    renderFinancials(financialsRes);
-    renderShares(profile, financialsRes);
-    renderOwnership();
-    renderFilings(filingsRes);
-    renderInsiderTransactions(insiderRes);
-    renderPeers(peersRes, symbol);
-    renderNews(newsRes, newsContent);
     const latestRecommendation = renderRecommendation(recommendationRes);
     renderScenarios(quote, metric);
     renderOutlook({ symbol, quote, metric, recommendation: latestRecommendation });
@@ -260,11 +256,51 @@ async function loadTicker(symbol) {
     setStatus("");
 
     initChart(symbol);
+    loadSecondaryData(symbol, profile, myToken);
   } catch (err) {
+    if (myToken !== loadToken) return;
     console.error(err);
     setStatus(describeFetchError(err), true);
     homeView.classList.remove("hidden");
   }
+}
+
+async function loadSecondaryData(symbol, profile, myToken) {
+  const today = new Date();
+  const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const fmt = d => d.toISOString().slice(0, 10);
+
+  const loadingNote = '<p class="muted">Loading...</p>';
+  earningsContent.innerHTML = loadingNote;
+  financialsContent.innerHTML = loadingNote;
+  sharesContent.innerHTML = loadingNote;
+  filingsContent.innerHTML = loadingNote;
+  insiderContent.innerHTML = loadingNote;
+  peersContent.innerHTML = loadingNote;
+  newsContent.innerHTML = loadingNote;
+
+  const [earningsRes, peersRes, newsRes, financialsRes, filingsRes, earningsCalendarRes, insiderRes] = await Promise.all([
+    fetchJSON(finnhubUrl("/stock/earnings", { symbol })).catch(() => []),
+    fetchJSON(finnhubUrl("/stock/peers", { symbol })).catch(() => []),
+    fetchJSON(finnhubUrl("/company-news", { symbol, from: fmt(twoWeeksAgo), to: fmt(today) })).catch(() => []),
+    fetchJSON(finnhubUrl("/stock/financials-reported", { symbol, freq: "quarterly" })).catch(() => null),
+    fetchJSON(finnhubUrl("/stock/filings", { symbol })).catch(() => []),
+    fetchJSON(finnhubUrl("/calendar/earnings", { symbol })).catch(() => null),
+    fetchJSON(finnhubUrl("/stock/insider-transactions", { symbol })).catch(() => null),
+  ]);
+
+  if (myToken !== loadToken) return; // user searched something else before this resolved
+
+  renderUpcomingEvents(earningsCalendarRes);
+  renderCompanyHeadlines(newsRes);
+  renderEarnings(earningsRes);
+  renderFinancials(financialsRes);
+  renderShares(profile, financialsRes);
+  renderOwnership();
+  renderFilings(filingsRes);
+  renderInsiderTransactions(insiderRes);
+  renderPeers(peersRes, symbol);
+  renderNews(newsRes, newsContent);
 }
 
 // Distinguishes the common failure cases instead of one generic message —

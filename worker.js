@@ -37,7 +37,7 @@
 // local proxy, which isn't worth it for one API. The data returned isn't
 // user-specific or sensitive; the actual secrets never leave this file.
 
-// Keep in sync with HOME_CATEGORIES in home.js (minus crypto, which is
+// Keep in sync with RANKING_STOCK_SYMBOLS in home.js (minus crypto, which is
 // pre-warmed separately via CoinGecko's batch endpoint below).
 const PREWARM_SYMBOLS = [
   "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META",

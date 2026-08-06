@@ -255,6 +255,7 @@ header { max-width: 1400px; margin: 0 auto 24px; }
 .home-chip.chip-down { border-left-color: var(--negative); }
 .home-chip-name { font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; }
 .home-chip-symbol { font-size: 11px; color: var(--text-muted); display: block; margin: 4px 0 8px; }
+.home-chip-simple .home-chip-symbol { margin-bottom: 0; }
 .home-chip-price { font-size: 15px; font-weight: 700; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
 .home-chip-price.positive { color: var(--positive); }
 .home-chip-price.negative { color: var(--negative); }
