@@ -490,6 +490,18 @@ async function fetchCompanyDescription(companyDisplayName) {
   }
 }
 
+// Small "here's what that number means with real dollars" callout shown
+// below each indicator category — same real numbers already fetched for
+// the cards above, just re-expressed against a concrete $100 so the
+// abstract ratio/percentage has a tangible anchor. Zero extra API cost:
+// pure arithmetic on data already on the page.
+function renderRealLifeExample(containerId, html) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!html) { el.innerHTML = ""; return; }
+  el.innerHTML = `<p class="real-life-example-label">In plain numbers</p><p class="real-life-example-text">${html}</p>`;
+}
+
 function renderValuation(metric, profile) {
   valuationGrid.innerHTML = "";
   const items = [
@@ -502,6 +514,11 @@ function renderValuation(metric, profile) {
     ["Shares Outstanding (M)", profile.shareOutstanding, "sharesOutstanding", false],
   ];
   items.forEach(([label, value, defKey, isPercent]) => valuationGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const pe = metric.peTTM;
+  renderRealLifeExample("valuationExample", isNum(pe) && pe > 0
+    ? `Put $100 into this stock and you're claiming about <strong>$${(100 / pe).toFixed(2)}</strong> of the company's annual earnings. That's the flip side of a P/E of ${pe.toFixed(1)}: you're paying $${pe.toFixed(0)} today for every $1 the company earns in a year.`
+    : null);
 }
 
 function renderGrowth(metric) {
@@ -513,6 +530,11 @@ function renderGrowth(metric) {
     ["EPS Growth (5Y)", metric.epsGrowth5Y, "epsGrowth", true],
   ];
   items.forEach(([label, value, defKey, isPercent]) => growthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const rev = metric.revenueGrowthTTMYoy;
+  renderRealLifeExample("growthExample", isNum(rev)
+    ? `If this company made $100 in revenue this time last year, it's making about <strong>$${(100 * (1 + rev / 100)).toFixed(2)}</strong> now — that's what its ${rev >= 0 ? "+" : ""}${rev.toFixed(1)}% year-over-year revenue growth means in practice.`
+    : null);
 }
 
 function renderProfitability(metric) {
@@ -524,6 +546,13 @@ function renderProfitability(metric) {
     ["Return on Equity", metric.roeTTM, "roe", true],
   ];
   items.forEach(([label, value, defKey, isPercent]) => profitabilityGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const netMargin = metric.netProfitMarginTTM;
+  const roe = metric.roeTTM;
+  const parts = [];
+  if (isNum(netMargin)) parts.push(`For every $100 in sales, it keeps about <strong>$${netMargin.toFixed(2)}</strong> as actual profit after all costs (its net margin)`);
+  if (isNum(roe)) parts.push(`for every $100 shareholders have invested in the business, it generates about <strong>$${roe.toFixed(2)}</strong> back in profit each year (its return on equity)`);
+  renderRealLifeExample("profitabilityExample", parts.length ? `${parts.join(", and ")}.` : null);
 }
 
 function renderHealth(metric) {
@@ -534,6 +563,11 @@ function renderHealth(metric) {
     ["Debt/Equity", metric["totalDebt/totalEquityAnnual"], "debtToEquity", false],
   ];
   items.forEach(([label, value, defKey, isPercent]) => healthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const de = metric["totalDebt/totalEquityAnnual"];
+  renderRealLifeExample("healthExample", isNum(de)
+    ? `For every $100 of the company's own money (shareholder equity), it has borrowed about <strong>$${(de * 100).toFixed(2)}</strong> more from lenders and creditors — that's what a Debt-to-Equity ratio of ${de.toFixed(2)} means.`
+    : null);
 }
 
 function renderDividends(metric) {
@@ -544,6 +578,11 @@ function renderDividends(metric) {
     ["5Y Dividend Growth", metric.dividendGrowthRate5Y, "dividendGrowth5Y", true],
   ];
   items.forEach(([label, value, defKey, isPercent]) => dividendsGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const yieldPct = metric.dividendYieldIndicatedAnnual;
+  renderRealLifeExample("dividendsExample", isNum(yieldPct) && yieldPct > 0
+    ? `Invest $100 in this stock today and you'd collect about <strong>$${yieldPct.toFixed(2)}</strong> per year in dividend payments alone (before taxes) — separate from any gain or loss in the share price itself.`
+    : `This company currently pays no meaningful dividend, so a $100 investment wouldn't generate cash income this way — any return would have to come from the share price itself changing.`);
 }
 
 function renderMomentum(metric) {
@@ -555,6 +594,11 @@ function renderMomentum(metric) {
     ["Beta", metric.beta, "beta", false],
   ];
   items.forEach(([label, value, defKey, isPercent]) => momentumGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const ytd = metric.yearToDatePriceReturnDaily;
+  renderRealLifeExample("momentumExample", isNum(ytd)
+    ? `$100 invested in this stock at the start of the year would be worth about <strong>$${(100 * (1 + ytd / 100)).toFixed(2)}</strong> today, based on its ${ytd >= 0 ? "+" : ""}${ytd.toFixed(1)}% year-to-date price move alone (not counting dividends).`
+    : null);
 }
 
 function renderRange(metric) {
@@ -654,7 +698,7 @@ function renderEarnings(earningsArr) {
 
   const header = document.createElement("div");
   header.className = "earnings-row earnings-header";
-  ["Quarter", "Actual EPS", "Estimate EPS", "Surprise"].forEach(t => {
+  ["Quarter", "Expected EPS", "Actual EPS"].forEach(t => {
     const c = document.createElement("div");
     c.textContent = t;
     header.appendChild(c);
@@ -669,14 +713,16 @@ function renderEarnings(earningsArr) {
 
     const cells = [
       q.period || "--",
-      isNum(q.actual) ? q.actual.toFixed(2) : "N/A",
       isNum(q.estimate) ? q.estimate.toFixed(2) : "N/A",
-      isNum(surprisePct) ? `${surprisePct >= 0 ? "+" : ""}${surprisePct.toFixed(1)}%` : "N/A",
+      isNum(q.actual) ? q.actual.toFixed(2) : "N/A",
     ];
     cells.forEach((val, i) => {
       const c = document.createElement("div");
       c.textContent = val;
-      if (i === 3 && beat !== null) c.className = beat ? "positive" : "negative";
+      // Actual EPS colored by whether it beat/missed the expected figure
+      // (same info the old "Surprise %" column carried), so no separate
+      // column is needed just to see which quarters beat estimates.
+      if (i === 2 && beat !== null) c.className = beat ? "positive" : "negative";
       row.appendChild(c);
     });
     table.appendChild(row);
@@ -873,13 +919,16 @@ function renderFilings(filingsArr) {
     .sort((a, b) => (priority[a.form] ?? 9) - (priority[b.form] ?? 9))
     .slice(0, 8);
 
+  const COLLAPSED_COUNT = 3;
+
   const list = document.createElement("div");
   list.className = "filings-list";
-  sorted.forEach(f => {
+  sorted.forEach((f, i) => {
     const info = getFilingInfo(f.form);
 
     const row = document.createElement("a");
     row.className = "filing-item";
+    if (i >= COLLAPSED_COUNT) row.classList.add("filing-item-extra", "hidden");
     row.href = f.filingUrl || f.reportUrl;
     row.target = "_blank";
     row.rel = "noopener noreferrer";
@@ -919,6 +968,19 @@ function renderFilings(filingsArr) {
 
   filingsContent.innerHTML = "";
   filingsContent.appendChild(list);
+
+  const extraCount = sorted.length - COLLAPSED_COUNT;
+  if (extraCount > 0) {
+    const expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.className = "filings-expand-btn";
+    expandBtn.textContent = `Show ${extraCount} more filing${extraCount === 1 ? "" : "s"}`;
+    expandBtn.addEventListener("click", () => {
+      list.querySelectorAll(".filing-item-extra").forEach(el => el.classList.remove("hidden"));
+      expandBtn.remove();
+    });
+    filingsContent.appendChild(expandBtn);
+  }
 
   const note = document.createElement("p");
   note.className = "muted small";

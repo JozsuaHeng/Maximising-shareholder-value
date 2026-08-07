@@ -397,6 +397,18 @@ canvas#priceChart { width: 100%; height: 160px; display: block; }
   gap: 14px;
 }
 
+.real-life-example:empty { display: none; }
+.real-life-example {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+.real-life-example-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); margin-bottom: 3px; }
+.real-life-example-text { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.real-life-example-text strong { color: var(--text-primary); }
+
 .indicator { background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .indicator-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
 .indicator-value { font-size: 16px; font-weight: 600; color: var(--text-primary); }
@@ -524,12 +536,43 @@ canvas#priceChart { width: 100%; height: 160px; display: block; }
 .invest-projection-figure { color: var(--text-primary); }
 .invest-projection-caveat { margin-top: 6px; }
 .invest-note { margin-top: 4px; }
+.invest-yield-readout { font-size: 13px; color: var(--text-secondary); }
+.invest-yield-readout strong { font-size: 14px; }
+.invest-yield-readout .positive { color: var(--positive); }
+.invest-yield-readout .negative { color: var(--negative); }
+
+.invest-years-slider-row { display: flex; align-items: center; gap: 8px; }
+.invest-years-slider-row input[type="range"] { flex: 1; }
+.invest-years-step {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.invest-years-step:hover { border-color: var(--accent); color: var(--accent); }
+
+.invest-table-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 4px 0 6px; }
+.invest-table-scroll { overflow-x: auto; margin-bottom: 10px; }
+.invest-returns-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+.invest-returns-table th, .invest-returns-table td { padding: 6px 10px; text-align: right; }
+.invest-returns-table thead th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--border); }
+.invest-returns-table tbody th { text-align: left; color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+.invest-returns-table tbody tr:first-child td, .invest-returns-table tbody tr:first-child th { padding-top: 8px; }
+.invest-returns-table td.positive { color: var(--positive); font-weight: 600; }
+.invest-returns-table td.negative { color: var(--negative); font-weight: 600; }
 
 /* Earnings table */
 .earnings-table { display: flex; flex-direction: column; gap: 4px; }
 .earnings-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr 1fr;
   gap: 8px;
   padding: 8px 10px;
   border-radius: 8px;
@@ -877,6 +920,18 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
 .filing-date { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .filing-desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px; }
 .filing-link-cue { font-size: 11px; color: var(--accent); }
+.filings-expand-btn {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.filings-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- Global Markets world map ---- */
 .world-markets-card { margin-bottom: 16px; }
