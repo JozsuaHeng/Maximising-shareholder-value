@@ -960,6 +960,13 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
 .exchange-tooltip-status { font-size: 2.1px; fill: var(--text-muted); }
 .exchange-tooltip-status.positive { fill: var(--positive); }
 
+/* ---- Home Market status card (ticker deep-dive right column) ---- */
+.home-market-status { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 4px; }
+.home-market-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.home-market-dot.open { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in srgb, var(--positive) 25%, transparent); }
+.home-market-dot.closed { background: var(--text-muted); }
+.home-market-status .positive { color: var(--positive); }
+
 /* ---- Responsive ---- */
 @media (max-width: 900px) {
   .dashboard-right { max-height: none; overflow-y: visible; }

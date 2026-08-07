@@ -101,6 +101,8 @@ const upcomingEvents = document.getElementById("upcomingEvents");
 const companyHeadlines = document.getElementById("companyHeadlines");
 const recommendationContent = document.getElementById("recommendationContent");
 const scenarioContent = document.getElementById("scenarioContent");
+const homeMarketCard = document.getElementById("homeMarketCard");
+const homeMarketContent = document.getElementById("homeMarketContent");
 
 const outlookHeadline = document.getElementById("outlookHeadline");
 const outlookBullets = document.getElementById("outlookBullets");
@@ -273,6 +275,7 @@ async function loadTicker(symbol) {
     recordRecentlyViewed(symbol, profile.name || symbol);
 
     renderOverview(symbol, quote, profile);
+    renderHomeMarketStatus(profile);
     renderCompanyFacts(profile);
     renderDescription(profile.name);
     renderValuation(metric, profile);
@@ -385,6 +388,33 @@ function renderOverview(symbol, quote, profile) {
   highVal.textContent = formatCurrency(quote.h);
   lowVal.textContent = formatCurrency(quote.l);
   prevCloseVal.textContent = formatCurrency(quote.pc);
+}
+
+// "Is this stock's own listing exchange open right now?" — reuses the
+// exchange/timezone data already built for the homepage's world map
+// (worldMarkets.js), keyed off the country Finnhub's profile2 already
+// returned. Zero extra API calls; hidden entirely for countries not in
+// that 13-exchange list rather than showing a wrong/guessed status.
+let homeMarketInterval = null;
+function renderHomeMarketStatus(profile) {
+  clearInterval(homeMarketInterval);
+  if (typeof getHomeMarketStatus !== "function") { homeMarketCard.classList.add("hidden"); return; }
+
+  const paint = () => {
+    const status = getHomeMarketStatus(profile.country);
+    if (!status) { homeMarketCard.classList.add("hidden"); return; }
+    homeMarketCard.classList.remove("hidden");
+    const { ex, isOpen, hhmm } = status;
+    homeMarketContent.innerHTML = `
+      <p class="home-market-status">
+        <span class="home-market-dot ${isOpen ? "open" : "closed"}"></span>
+        <strong>${ex.name}</strong> is currently <strong class="${isOpen ? "positive" : ""}">${isOpen ? "OPEN" : "CLOSED"}</strong>
+      </p>
+      <p class="muted small">${ex.city} local time: ${hhmm} · regular hours ${ex.open}–${ex.close}</p>
+    `;
+  };
+  paint();
+  homeMarketInterval = setInterval(paint, 30000);
 }
 
 function renderCompanyFacts(profile) {

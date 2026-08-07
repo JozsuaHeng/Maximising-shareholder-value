@@ -12,21 +12,35 @@
 // means "within normal hours on a weekday," not a guarantee it's not a
 // holiday closure today.
 
+// `country` = the 2-letter code Finnhub's /stock/profile2 returns in its
+// `country` field — lets script.js look up "is THIS stock's home market
+// open right now" for the deep-dive page's right column, reusing this
+// same exchange/hours data (see getHomeMarketStatus below) instead of
+// fetching anything new.
 const EXCHANGES = [
-  { code: "NYSE", name: "NYSE / Nasdaq", city: "New York", tz: "America/New_York", open: "09:30", close: "16:00", x: 25, y: 34 },
-  { code: "TSX", name: "Toronto Stock Exchange", city: "Toronto", tz: "America/Toronto", open: "09:30", close: "16:00", x: 24, y: 28 },
-  { code: "B3", name: "B3", city: "São Paulo", tz: "America/Sao_Paulo", open: "10:00", close: "17:00", x: 36, y: 64 },
-  { code: "LSE", name: "London Stock Exchange", city: "London", tz: "Europe/London", open: "08:00", close: "16:30", x: 45, y: 21 },
-  { code: "EPA", name: "Euronext Paris", city: "Paris", tz: "Europe/Paris", open: "09:00", close: "17:30", x: 49, y: 30 },
-  { code: "FRA", name: "Deutsche Börse (Xetra)", city: "Frankfurt", tz: "Europe/Berlin", open: "09:00", close: "17:30", x: 55, y: 22 },
-  { code: "JSE", name: "Johannesburg Stock Exchange", city: "Johannesburg", tz: "Africa/Johannesburg", open: "09:00", close: "17:00", x: 55, y: 66 },
-  { code: "NSE", name: "National Stock Exchange", city: "Mumbai", tz: "Asia/Kolkata", open: "09:15", close: "15:30", x: 68, y: 46 },
-  { code: "SGX", name: "Singapore Exchange", city: "Singapore", tz: "Asia/Singapore", open: "09:00", close: "17:00", x: 76, y: 56 },
-  { code: "SSE", name: "Shanghai Stock Exchange", city: "Shanghai", tz: "Asia/Shanghai", open: "09:30", close: "15:00", x: 81, y: 37 },
-  { code: "HKEX", name: "Hong Kong Exchange", city: "Hong Kong", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", x: 80, y: 43 },
-  { code: "TSE", name: "Tokyo Stock Exchange", city: "Tokyo", tz: "Asia/Tokyo", open: "09:00", close: "15:00", x: 87, y: 33 },
-  { code: "ASX", name: "Australian Securities Exchange", city: "Sydney", tz: "Australia/Sydney", open: "10:00", close: "16:00", x: 90, y: 68 },
+  { code: "NYSE", name: "NYSE / Nasdaq", city: "New York", country: "US", tz: "America/New_York", open: "09:30", close: "16:00", x: 25, y: 34 },
+  { code: "TSX", name: "Toronto Stock Exchange", city: "Toronto", country: "CA", tz: "America/Toronto", open: "09:30", close: "16:00", x: 24, y: 28 },
+  { code: "B3", name: "B3", city: "São Paulo", country: "BR", tz: "America/Sao_Paulo", open: "10:00", close: "17:00", x: 36, y: 64 },
+  { code: "LSE", name: "London Stock Exchange", city: "London", country: "GB", tz: "Europe/London", open: "08:00", close: "16:30", x: 45, y: 21 },
+  { code: "EPA", name: "Euronext Paris", city: "Paris", country: "FR", tz: "Europe/Paris", open: "09:00", close: "17:30", x: 49, y: 30 },
+  { code: "FRA", name: "Deutsche Börse (Xetra)", city: "Frankfurt", country: "DE", tz: "Europe/Berlin", open: "09:00", close: "17:30", x: 55, y: 22 },
+  { code: "JSE", name: "Johannesburg Stock Exchange", city: "Johannesburg", country: "ZA", tz: "Africa/Johannesburg", open: "09:00", close: "17:00", x: 55, y: 66 },
+  { code: "NSE", name: "National Stock Exchange", city: "Mumbai", country: "IN", tz: "Asia/Kolkata", open: "09:15", close: "15:30", x: 68, y: 46 },
+  { code: "SGX", name: "Singapore Exchange", city: "Singapore", country: "SG", tz: "Asia/Singapore", open: "09:00", close: "17:00", x: 76, y: 56 },
+  { code: "SSE", name: "Shanghai Stock Exchange", city: "Shanghai", country: "CN", tz: "Asia/Shanghai", open: "09:30", close: "15:00", x: 81, y: 37 },
+  { code: "HKEX", name: "Hong Kong Exchange", city: "Hong Kong", country: "HK", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", x: 80, y: 43 },
+  { code: "TSE", name: "Tokyo Stock Exchange", city: "Tokyo", country: "JP", tz: "Asia/Tokyo", open: "09:00", close: "15:00", x: 87, y: 33 },
+  { code: "ASX", name: "Australian Securities Exchange", city: "Sydney", country: "AU", tz: "Australia/Sydney", open: "10:00", close: "16:00", x: 90, y: 68 },
 ];
+
+// Used by script.js's ticker deep-dive page (right column) — looks up
+// this stock's own listing exchange by country and returns its live
+// open/closed status, or null if it's not one of the 13 exchanges above.
+function getHomeMarketStatus(countryCode) {
+  const ex = EXCHANGES.find(e => e.country === countryCode);
+  if (!ex) return null;
+  return { ex, ...getExchangeStatus(ex) };
+}
 
 function getExchangeStatus(ex) {
   const parts = new Intl.DateTimeFormat("en-US", {

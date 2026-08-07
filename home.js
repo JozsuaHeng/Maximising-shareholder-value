@@ -65,13 +65,20 @@ const BROWSE_CATEGORIES = [
 // Small, curated universe used ONLY to rank Winners/Losers/Most Active —
 // the original 6-per-category set, kept separate from the (now much
 // longer) browse lists above so ranking cost doesn't grow with them.
+// Trimmed from 6 to 4 per category (36 -> 24 symbols, 2026-08-07) to cut
+// real Finnhub usage — this is the single biggest cost center in the app
+// (a first-ever visit to Winners/Losers/Most Active fires one quote call
+// per symbol here, all at once). ETF/bond rows lost DIA/IWM and AGG/IEF
+// specifically since DIA/IWM are already covered by the homepage's index
+// strip (home.js loadIndexStrip) — no loss of information, just no
+// double-fetching the same names two different ways.
 const RANKING_STOCK_SYMBOLS = [
-  ["AAPL", "Apple"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["NVDA", "Nvidia"], ["META", "Meta"],
-  ["JNJ", "Johnson & Johnson"], ["PG", "Procter & Gamble"], ["KO", "Coca-Cola"], ["JPM", "JPMorgan Chase"], ["V", "Visa"], ["WMT", "Walmart"],
-  ["T", "AT&T"], ["XOM", "ExxonMobil"], ["VZ", "Verizon"], ["PFE", "Pfizer"], ["MO", "Altria"], ["IBM", "IBM"],
-  ["TSLA", "Tesla"], ["NFLX", "Netflix"], ["SHOP", "Shopify"], ["PLTR", "Palantir"], ["CRWD", "CrowdStrike"], ["AMD", "AMD"],
-  ["SPY", "S&P 500"], ["QQQ", "Nasdaq 100"], ["VTI", "Total Market"], ["DIA", "Dow Jones"], ["IWM", "Russell 2000"], ["VOO", "S&P 500 (Vanguard)"],
-  ["TLT", "20+Y Treasury"], ["BND", "Total Bond Market"], ["AGG", "US Aggregate Bond"], ["HYG", "High Yield Corp"], ["IEF", "7-10Y Treasury"], ["LQD", "Investment Grade Corp"],
+  ["AAPL", "Apple"], ["MSFT", "Microsoft"], ["NVDA", "Nvidia"], ["META", "Meta"],
+  ["JNJ", "Johnson & Johnson"], ["PG", "Procter & Gamble"], ["JPM", "JPMorgan Chase"], ["WMT", "Walmart"],
+  ["T", "AT&T"], ["XOM", "ExxonMobil"], ["PFE", "Pfizer"], ["IBM", "IBM"],
+  ["TSLA", "Tesla"], ["NFLX", "Netflix"], ["PLTR", "Palantir"], ["AMD", "AMD"],
+  ["SPY", "S&P 500"], ["QQQ", "Nasdaq 100"], ["VTI", "Total Market"], ["VOO", "S&P 500 (Vanguard)"],
+  ["TLT", "20+Y Treasury"], ["BND", "Total Bond Market"], ["HYG", "High Yield Corp"], ["LQD", "Investment Grade Corp"],
 ];
 
 const DYNAMIC_TABS = [

@@ -71,7 +71,12 @@ export default {
 // but caching a 10-K filing list for only 20 seconds wastes the cache
 // entirely.
 function cacheTTL(path) {
-  if (path === "/quote" || path === "/simple/price") return 20;
+  // Bumped 20s -> 30s (2026-08-07) as part of a broader push to reduce
+  // real Finnhub usage now that KV pre-warming is gone — a personal
+  // dashboard doesn't need quotes fresher than 30s, and this cuts real
+  // upstream hits for popular symbols by roughly a third under repeat
+  // traffic within the same edge location.
+  if (path === "/quote" || path === "/simple/price") return 30;
   if (
     path === "/stock/filings" ||
     path === "/stock/financials-reported" ||
