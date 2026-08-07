@@ -191,10 +191,10 @@ header { max-width: 1400px; margin: 0 auto 24px; }
 .world-markets-layout .world-markets-map { flex: 2; min-width: 0; }
 .world-markets-layout .index-strip { flex: 1; min-width: 180px; }
 
-.index-strip { display: flex; flex-direction: column; gap: 8px; }
+.index-strip { display: flex; flex-direction: column; gap: 10px; }
 .index-chip {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 14px 16px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
@@ -202,8 +202,8 @@ header { max-width: 1400px; margin: 0 auto 24px; }
   transition: border-color 0.15s ease;
 }
 .index-chip:hover { border-color: var(--accent); }
-.index-chip-name { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.index-chip-value { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.index-chip-name { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+.index-chip-value { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .index-chip-value.positive { color: var(--positive); }
 .index-chip-value.negative { color: var(--negative); }
 
@@ -973,6 +973,14 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
   --map-land: #c7d3d6;
 }
 
+.world-map-grid line { stroke: var(--text-muted); stroke-width: 1.1; opacity: 0.22; pointer-events: none; }
+
+/* !important is load-bearing here: worldmap.svg's country paths carry
+   their base color as an inline style="fill:...", which normal CSS
+   specificity can never beat — only !important can override an inline
+   style from an external stylesheet. */
+.country-market-open { fill: color-mix(in srgb, var(--positive) 38%, var(--map-land)) !important; }
+
 .exchange-marker { cursor: pointer; }
 .exchange-dot { stroke: var(--bg-surface); stroke-width: 1.6; }
 .exchange-dot-open { fill: var(--positive); }
@@ -988,12 +996,12 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
   0% { transform: scale(1); opacity: 0.5; }
   100% { transform: scale(3); opacity: 0; }
 }
-.exchange-label { font-size: 24px; fill: var(--text-primary); text-anchor: middle; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 4px; stroke-linejoin: round; }
+.exchange-label { font-size: 34px; fill: var(--text-primary); font-weight: 700; pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 5px; stroke-linejoin: round; }
 .exchange-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
 .exchange-marker:hover .exchange-tooltip { opacity: 1; }
 .exchange-tooltip rect { fill: var(--bg-surface); stroke: var(--border); stroke-width: 1.5; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35)); }
-.exchange-tooltip-name { font-size: 22px; fill: var(--text-primary); font-weight: 700; }
-.exchange-tooltip-status { font-size: 19px; fill: var(--text-muted); }
+.exchange-tooltip-name { font-size: 26px; fill: var(--text-primary); font-weight: 700; }
+.exchange-tooltip-status { font-size: 23px; fill: var(--text-muted); }
 .exchange-tooltip-status.positive { fill: var(--positive); }
 
 /* ---- Home Market status card (ticker deep-dive right column) ---- */

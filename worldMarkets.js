@@ -20,18 +20,27 @@
 // means "within normal hours on a weekday," not a guarantee it's not a
 // holiday closure today.
 
+// `mapCountry` overrides `country` only for finding which landmass to
+// highlight on the map — Hong Kong isn't a separate polygon in this map
+// file (it's folded into China's), so HKEX highlights China's outline
+// instead. `country` itself (used for the deep-dive page's Home Market
+// card, matched against Finnhub's real profile2.country) stays accurate.
 const EXCHANGES = [
   { code: "NYSE", name: "NYSE / Nasdaq", city: "New York", country: "US", tz: "America/New_York", open: "09:30", close: "16:00", lat: 40.71, lon: -74.01 },
   { code: "TSX", name: "Toronto Stock Exchange", city: "Toronto", country: "CA", tz: "America/Toronto", open: "09:30", close: "16:00", lat: 43.65, lon: -79.38 },
   { code: "B3", name: "B3", city: "São Paulo", country: "BR", tz: "America/Sao_Paulo", open: "10:00", close: "17:00", lat: -23.55, lon: -46.63 },
-  { code: "LSE", name: "London Stock Exchange", city: "London", country: "GB", tz: "Europe/London", open: "08:00", close: "16:30", lat: 51.51, lon: -0.13 },
-  { code: "EPA", name: "Euronext Paris", city: "Paris", country: "FR", tz: "Europe/Paris", open: "09:00", close: "17:30", lat: 48.86, lon: 2.35 },
-  { code: "FRA", name: "Deutsche Börse (Xetra)", city: "Frankfurt", country: "DE", tz: "Europe/Berlin", open: "09:00", close: "17:30", lat: 50.11, lon: 8.68 },
+  // London/Paris/Frankfurt sit close enough together in real lon/lat that
+  // their labels collide at this map's scale — labelAnchor/labelDx/
+  // labelDy nudge just the TEXT in different directions per city while
+  // each dot stays at its real, correct position.
+  { code: "LSE", name: "London Stock Exchange", city: "London", country: "GB", tz: "Europe/London", open: "08:00", close: "16:30", lat: 51.51, lon: -0.13, labelAnchor: "end", labelDx: -3.4 },
+  { code: "EPA", name: "Euronext Paris", city: "Paris", country: "FR", tz: "Europe/Paris", open: "09:00", close: "17:30", lat: 48.86, lon: 2.35, labelDy: 4.6 },
+  { code: "FRA", name: "Deutsche Börse (Xetra)", city: "Frankfurt", country: "DE", tz: "Europe/Berlin", open: "09:00", close: "17:30", lat: 50.11, lon: 8.68, labelAnchor: "start", labelDx: 3.4 },
   { code: "JSE", name: "Johannesburg Stock Exchange", city: "Johannesburg", country: "ZA", tz: "Africa/Johannesburg", open: "09:00", close: "17:00", lat: -26.20, lon: 28.05 },
   { code: "NSE", name: "National Stock Exchange", city: "Mumbai", country: "IN", tz: "Asia/Kolkata", open: "09:15", close: "15:30", lat: 19.08, lon: 72.88 },
   { code: "SGX", name: "Singapore Exchange", city: "Singapore", country: "SG", tz: "Asia/Singapore", open: "09:00", close: "17:00", lat: 1.35, lon: 103.82 },
   { code: "SSE", name: "Shanghai Stock Exchange", city: "Shanghai", country: "CN", tz: "Asia/Shanghai", open: "09:30", close: "15:00", lat: 31.23, lon: 121.47 },
-  { code: "HKEX", name: "Hong Kong Exchange", city: "Hong Kong", country: "HK", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17 },
+  { code: "HKEX", name: "Hong Kong Exchange", city: "Hong Kong", country: "HK", mapCountry: "cn", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17 },
   { code: "TSE", name: "Tokyo Stock Exchange", city: "Tokyo", country: "JP", tz: "Asia/Tokyo", open: "09:00", close: "15:00", lat: 35.68, lon: 139.65 },
   { code: "ASX", name: "Australian Securities Exchange", city: "Sydney", country: "AU", tz: "Australia/Sydney", open: "10:00", close: "16:00", lat: -33.87, lon: 151.21 },
 ];
@@ -89,6 +98,43 @@ async function renderWorldMarkets() {
   const lonToX = lon => (lon + 180) / 360 * vb.width;
   const latToY = lat => (90 - lat) / 180 * vb.height;
 
+  // Subtle lon/lat graticule — built once (it never changes) and drawn on
+  // top of the land/ocean paths but under the markers, same convention as
+  // most reference-line map overlays.
+  if (!worldMapSvgRoot.querySelector("#worldMapGridLayer")) {
+    const gridLayer = document.createElementNS(svgNS, "g");
+    gridLayer.setAttribute("id", "worldMapGridLayer");
+    gridLayer.setAttribute("class", "world-map-grid");
+    for (let lon = -180; lon <= 180; lon += 30) {
+      const line = document.createElementNS(svgNS, "line");
+      const x = lonToX(lon);
+      line.setAttribute("x1", x); line.setAttribute("x2", x);
+      line.setAttribute("y1", 0); line.setAttribute("y2", vb.height);
+      gridLayer.appendChild(line);
+    }
+    for (let lat = -60; lat <= 90; lat += 30) {
+      const line = document.createElementNS(svgNS, "line");
+      const y = latToY(lat);
+      line.setAttribute("x1", 0); line.setAttribute("x2", vb.width);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
+      gridLayer.appendChild(line);
+    }
+    worldMapSvgRoot.appendChild(gridLayer);
+  }
+
+  // Highlight the landmass of any country whose exchange is open right
+  // now. Country paths carry a "land <iso2>" class (a few also/only carry
+  // a matching id — worldmap.svg isn't perfectly consistent), so match on
+  // both. Cleared and rebuilt every render since open/closed changes over
+  // time.
+  worldMapSvgRoot.querySelectorAll(".country-market-open").forEach(el => el.classList.remove("country-market-open"));
+  const highlightCountry = code => {
+    if (!code) return;
+    const c = code.toLowerCase();
+    worldMapSvgRoot.querySelectorAll(`.land.${c}`).forEach(el => el.classList.add("country-market-open"));
+    worldMapSvgRoot.querySelectorAll(`[id="${c}"]`).forEach(el => el.classList.add("country-market-open"));
+  };
+
   let markersLayer = worldMapSvgRoot.querySelector("#exchangeMarkersLayer");
   if (markersLayer) markersLayer.remove();
   markersLayer = document.createElementNS(svgNS, "g");
@@ -102,7 +148,7 @@ async function renderWorldMarkets() {
   let openCount = 0;
   EXCHANGES.forEach(ex => {
     const { isOpen, hhmm } = getExchangeStatus(ex);
-    if (isOpen) openCount++;
+    if (isOpen) { openCount++; highlightCountry(ex.mapCountry || ex.country); }
     const x = lonToX(ex.lon), y = latToY(ex.lat);
 
     const g = document.createElementNS(svgNS, "g");
@@ -123,15 +169,16 @@ async function renderWorldMarkets() {
 
     const label = document.createElementNS(svgNS, "text");
     label.setAttribute("class", "exchange-label");
-    label.setAttribute("x", "0");
-    label.setAttribute("y", `${-r * 2.2}`);
+    label.setAttribute("x", `${(ex.labelDx || 0) * r}`);
+    label.setAttribute("y", `${(ex.labelDy ? ex.labelDy * r : -r * 2.2)}`);
+    label.setAttribute("text-anchor", ex.labelAnchor || "middle");
     label.textContent = ex.city;
     g.appendChild(label);
 
     // Hover tooltip — plain SVG, revealed via CSS :hover
     const tooltip = document.createElementNS(svgNS, "g");
     tooltip.setAttribute("class", "exchange-tooltip");
-    const tw = vb.width * 0.11, th = vb.width * 0.05;
+    const tw = vb.width * 0.13, th = vb.width * 0.06;
     const tx = ex.lon > 60 ? -tw - r * 2 : r * 2;
     const ty = ex.lat < -20 ? -th - r * 2 : r * 2;
     tooltip.setAttribute("transform", `translate(${tx}, ${ty})`);
