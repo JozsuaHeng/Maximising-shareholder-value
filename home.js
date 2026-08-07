@@ -92,12 +92,77 @@ const homeTabsEl = document.getElementById("homeTabs");
 const homeContentEl = document.getElementById("homeContent");
 const homeViewToggleEl = document.getElementById("homeViewToggle");
 const homeNewsListEl = document.getElementById("homeNewsList");
+const indexStripEl = document.getElementById("indexStrip");
+const recentlyViewedRowEl = document.getElementById("recentlyViewedRow");
+
+// A small, fixed set of index proxies — 4 quote calls, once per homepage
+// visit, cached for the session. Deliberately NOT tied to any tab (always
+// visible) since a "what's the market doing right now" strip is exactly
+// the kind of thing Yahoo Finance-style pages lead with.
+const INDEX_STRIP_SYMBOLS = [
+  ["SPY", "S&P 500"],
+  ["QQQ", "Nasdaq 100"],
+  ["DIA", "Dow Jones"],
+  ["IWM", "Russell 2000"],
+];
 
 function initHome() {
   buildTabs();
   buildViewToggle();
   switchTab(homeState.activeTab);
   loadMarketNews();
+  loadIndexStrip();
+  renderRecentlyViewed();
+}
+
+async function loadIndexStrip() {
+  indexStripEl.innerHTML = INDEX_STRIP_SYMBOLS.map(([symbol, name]) =>
+    `<div class="index-chip" data-symbol="${symbol}"><span class="index-chip-name">${name}</span><span class="index-chip-value muted">···</span></div>`
+  ).join("");
+
+  const results = await Promise.all(INDEX_STRIP_SYMBOLS.map(async ([symbol]) => {
+    try {
+      const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
+      return isNum(q.c) && q.c !== 0 ? { symbol, quote: q } : null;
+    } catch {
+      return null;
+    }
+  }));
+
+  results.forEach(r => {
+    if (!r) return;
+    const chip = indexStripEl.querySelector(`.index-chip[data-symbol="${r.symbol}"] .index-chip-value`);
+    if (!chip) return;
+    const dp = r.quote.dp ?? 0;
+    chip.classList.remove("muted");
+    chip.classList.add(dp >= 0 ? "positive" : "negative");
+    chip.textContent = `${formatCurrency(r.quote.c)} (${dp >= 0 ? "+" : ""}${dp.toFixed(2)}%)`;
+  });
+
+  Array.from(indexStripEl.children).forEach(chip => {
+    chip.addEventListener("click", () => loadTicker(chip.dataset.symbol));
+  });
+}
+
+// Zero API cost — reads what script.js already saved to localStorage
+// after each successful ticker load. Name-only chips, same as browse
+// categories, so revisiting one is free until actually clicked.
+function renderRecentlyViewed() {
+  const recent = getRecentlyViewed();
+  if (recent.length === 0) {
+    recentlyViewedRowEl.classList.add("hidden");
+    return;
+  }
+  recentlyViewedRowEl.classList.remove("hidden");
+  recentlyViewedRowEl.innerHTML = '<span class="recently-viewed-label">Recently viewed</span>';
+  recent.forEach(({ symbol, name }) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "recently-viewed-chip";
+    chip.innerHTML = `<strong>${symbol}</strong><span class="muted">${name}</span>`;
+    chip.addEventListener("click", () => loadTicker(symbol));
+    recentlyViewedRowEl.appendChild(chip);
+  });
 }
 
 function buildTabs() {
@@ -366,10 +431,100 @@ async function renderMacroTab() {
   homeContentEl.appendChild(note);
 }
 
+const NEWS_CATEGORY_COLORS = {
+  business: "#1baf7a", general: "#7ea0ff", forex: "#e0ab2e", crypto: "#c77dff", merger: "#e66767", technology: "#3ddc84",
+};
+
 function loadMarketNews() {
   fetchJSON(finnhubUrl("/news", { category: "general" }))
-    .then(items => renderNews(items.slice(0, 8), homeNewsListEl))
+    .then(items => renderHomeNews(items.slice(0, 9)))
     .catch(() => { homeNewsListEl.innerHTML = '<p class="muted">Couldn\'t load market news right now.</p>'; });
+}
+
+// Richer visual treatment than the plain list used elsewhere (ticker-page
+// company news) — same /news response, no extra API cost, just using
+// more of what Finnhub already returns (image, category) plus a featured
+// "hero" story up top. Falls back to a colored initial-letter badge if an
+// item has no image or its image fails to load.
+function renderHomeNews(items) {
+  homeNewsListEl.innerHTML = "";
+  if (!items || items.length === 0) {
+    homeNewsListEl.innerHTML = '<p class="muted">No recent news found.</p>';
+    return;
+  }
+
+  const sorted = [...items].sort((a, b) => b.datetime - a.datetime);
+  const [hero, ...rest] = sorted;
+
+  const wrap = document.createElement("div");
+  wrap.className = "home-news-wrap";
+
+  wrap.appendChild(buildNewsCard(hero, true));
+
+  const grid = document.createElement("div");
+  grid.className = "home-news-grid";
+  rest.forEach(item => grid.appendChild(buildNewsCard(item, false)));
+  wrap.appendChild(grid);
+
+  homeNewsListEl.appendChild(wrap);
+}
+
+function buildNewsCard(item, isHero) {
+  const source = item.source || "Unknown";
+  const card = document.createElement("a");
+  card.className = isHero ? "home-news-hero" : "home-news-card";
+  card.href = item.url;
+  card.target = "_blank";
+  card.rel = "noopener noreferrer";
+
+  const media = document.createElement("div");
+  media.className = isHero ? "home-news-hero-media" : "home-news-card-media";
+  if (item.image) {
+    const img = document.createElement("img");
+    img.src = item.image;
+    img.alt = "";
+    img.loading = "lazy";
+    img.onerror = () => { media.innerHTML = ""; media.style.background = colorFromString(source); media.textContent = source.charAt(0).toUpperCase(); };
+    media.appendChild(img);
+  } else {
+    media.style.background = colorFromString(source);
+    media.textContent = source.charAt(0).toUpperCase();
+  }
+  card.appendChild(media);
+
+  const body = document.createElement("div");
+  body.className = "home-news-body";
+
+  const metaRow = document.createElement("div");
+  metaRow.className = "home-news-meta-row";
+  if (item.category) {
+    const catBadge = document.createElement("span");
+    catBadge.className = "home-news-category";
+    catBadge.style.color = NEWS_CATEGORY_COLORS[item.category] || "var(--accent)";
+    catBadge.style.borderColor = NEWS_CATEGORY_COLORS[item.category] || "var(--accent)";
+    catBadge.textContent = item.category;
+    metaRow.appendChild(catBadge);
+  }
+  const metaText = document.createElement("span");
+  metaText.className = "muted small";
+  metaText.textContent = `${source} · ${formatRelativeTime(new Date((item.datetime || 0) * 1000))}`;
+  metaRow.appendChild(metaText);
+
+  const headline = document.createElement("div");
+  headline.className = isHero ? "home-news-hero-headline" : "home-news-card-headline";
+  headline.textContent = item.headline || "";
+
+  body.appendChild(metaRow);
+  body.appendChild(headline);
+  if (isHero && item.summary) {
+    const summary = document.createElement("p");
+    summary.className = "home-news-hero-summary muted small";
+    summary.textContent = item.summary;
+    body.appendChild(summary);
+  }
+  card.appendChild(body);
+
+  return card;
 }
 
 initHome();

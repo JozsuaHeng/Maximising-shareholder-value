@@ -29,7 +29,13 @@ const RANGE_CONFIGS = {
   "1W": { interval: "30min", outputsize: 65 },  // ~5 trading days
   "3M": { interval: "1day", outputsize: 63 },   // ~3 months of trading days
   "6M": { interval: "1day", outputsize: 130 },  // ~6 months of trading days
+  "1Y": { interval: "1day", outputsize: 252 },  // ~1 year of trading days
+  "5Y": { interval: "1week", outputsize: 260 }, // ~5 years of weekly bars — daily would be 1250+ points for little visual benefit at this zoom level, same reasoning real charting platforms use weekly/monthly bars for multi-year views
 };
+
+// Daily/weekly bars use index-based x-axis spacing (see getXMapper) same
+// as any other non-intraday range — no session gaps to worry about.
+const DAILY_OR_LONGER_INTERVALS = ["1day", "1week"];
 
 const PAD_LEFT = 56;
 const PAD_RIGHT = 10;
@@ -41,6 +47,7 @@ const INTERVAL_MS = {
   "1h": 60 * 60000,
   "4h": 4 * 60 * 60000,
   "1day": 24 * 60 * 60000,
+  "1week": 7 * 24 * 60 * 60000,
 };
 
 // Overnight/weekend gaps between trading sessions shouldn't be drawn as a
@@ -66,6 +73,15 @@ function getSegments(series) {
   return segments;
 }
 
+// Clamps each [start, end] segment to a visible window, dropping any
+// segment that falls entirely outside it — used when zoomed in so trend
+// color, area fill, and overlay lines only reflect what's on screen.
+function clipSegments(segments, visStart, visEnd) {
+  return segments
+    .map(([s, e]) => [Math.max(s, visStart), Math.min(e, visEnd)])
+    .filter(([s, e]) => s <= e);
+}
+
 const chartState = {
   symbol: null,
   range: "6M",
@@ -74,7 +90,21 @@ const chartState = {
   sr: null,
   overlays: { sma20: true, sma50: false, ema20: true },
   chartType: "line",
+  // [startIdx, endIdx] into the current series, inclusive — null means
+  // "fully zoomed out" (show everything). Set via mouse wheel (zoom) or
+  // drag (pan) on the price panel; reset on every range/symbol change.
+  zoomRange: null,
 };
+
+// The visible index window for the current zoom level — [0, length-1]
+// when not zoomed. Every panel renders only this slice and rescales its
+// own y-axis to it, same as TradingView/Webull: zooming in reveals more
+// price/indicator detail, not just a stretched-out view of the same range.
+function getVisibleIndices(series) {
+  const maxIdx = series.closes.length - 1;
+  if (!chartState.zoomRange) return [0, maxIdx];
+  return [Math.max(0, chartState.zoomRange[0]), Math.min(maxIdx, chartState.zoomRange[1])];
+}
 
 function chartIsNum(v) {
   return typeof v === "number" && !Number.isNaN(v);
@@ -112,6 +142,7 @@ const rsiChartEl = document.getElementById("rsiChart");
 const macdChartEl = document.getElementById("macdChart");
 const chartNoteEl = document.getElementById("chartNote");
 const srNoteEl = document.getElementById("srNote");
+const resetZoomBtn = document.getElementById("resetZoomBtn");
 
 Array.from(chartRangeRow.querySelectorAll("button")).forEach(btn => {
   btn.addEventListener("click", () => {
@@ -137,6 +168,80 @@ candleToggleBtn.addEventListener("click", () => {
   chartState.chartType = chartState.chartType === "candles" ? "line" : "candles";
   candleToggleBtn.classList.toggle("active", chartState.chartType === "candles");
   if (chartState.series) renderAllPanels(chartState.series);
+});
+
+resetZoomBtn.addEventListener("click", () => {
+  chartState.zoomRange = null;
+  if (chartState.series) renderAllPanels(chartState.series);
+});
+
+// ---- Zoom (wheel) and pan (drag) — same interaction model as TradingView/
+// Webull: scroll to zoom in/out around the cursor, drag to pan once
+// zoomed. Both act on the price panel; every sub-panel picks up the same
+// chartState.zoomRange on its own next render since they all read it via
+// getVisibleIndices().
+function handleChartWheel(e) {
+  const series = chartState.series;
+  if (!series) return;
+  e.preventDefault();
+
+  const rect = priceChartEl.getBoundingClientRect();
+  const plotW = rect.width - PAD_LEFT - PAD_RIGHT;
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
+  const mouseX = e.clientX - rect.left;
+  const centerIdx = Math.min(visEnd, Math.max(visStart, xmap.indexForX(mouseX)));
+
+  const maxIdx = series.closes.length - 1;
+  const zoomFactor = e.deltaY > 0 ? 1.15 : 1 / 1.15; // scroll down = zoom out, up = zoom in
+  const currentSpan = visEnd - visStart;
+  const minSpan = Math.min(10, maxIdx); // don't zoom in past ~10 visible bars
+  let newSpan = Math.max(minSpan, Math.min(maxIdx, Math.round(currentSpan * zoomFactor)));
+
+  const ratio = currentSpan > 0 ? (centerIdx - visStart) / currentSpan : 0.5;
+  let newStart = Math.round(centerIdx - ratio * newSpan);
+  let newEnd = newStart + newSpan;
+  if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+  if (newEnd > maxIdx) { newStart -= (newEnd - maxIdx); newEnd = maxIdx; }
+  newStart = Math.max(0, newStart);
+
+  chartState.zoomRange = newSpan >= maxIdx ? null : [newStart, newEnd];
+  renderAllPanels(series);
+}
+priceChartEl.addEventListener("wheel", handleChartWheel, { passive: false });
+
+let isPanningChart = false;
+let panStartX = 0;
+let panStartRange = null;
+
+priceChartEl.addEventListener("mousedown", e => {
+  if (!chartState.series || !chartState.zoomRange) return; // nothing to pan when fully zoomed out
+  isPanningChart = true;
+  panStartX = e.clientX;
+  panStartRange = [...chartState.zoomRange];
+  priceChartEl.classList.add("panning");
+  chartTooltipEl.classList.add("hidden");
+});
+window.addEventListener("mousemove", e => {
+  if (!isPanningChart || !chartState.series) return;
+  const series = chartState.series;
+  const rect = priceChartEl.getBoundingClientRect();
+  const plotW = rect.width - PAD_LEFT - PAD_RIGHT;
+  const span = panStartRange[1] - panStartRange[0];
+  const deltaIdx = Math.round(-((e.clientX - panStartX) / plotW) * span);
+  const maxIdx = series.closes.length - 1;
+  let newStart = panStartRange[0] + deltaIdx;
+  let newEnd = panStartRange[1] + deltaIdx;
+  if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+  if (newEnd > maxIdx) { newStart -= (newEnd - maxIdx); newEnd = maxIdx; }
+  chartState.zoomRange = [Math.max(0, newStart), Math.min(maxIdx, newEnd)];
+  renderAllPanels(series);
+});
+window.addEventListener("mouseup", () => {
+  if (isPanningChart) {
+    isPanningChart = false;
+    priceChartEl.classList.remove("panning");
+  }
 });
 
 window.addEventListener("resize", debounce(() => {
@@ -178,6 +283,7 @@ async function loadChartRange() {
   const symbol = chartState.symbol;
   const range = chartState.range;
   const cacheKey = `${symbol}:${range}`;
+  chartState.zoomRange = null; // a different range/bar-count invalidates any previous zoom window
 
   if (chartState.cache[cacheKey]) {
     chartState.series = chartState.cache[cacheKey];
@@ -203,7 +309,7 @@ async function loadChartRange() {
       lows: values.map(v => parseFloat(v.low)),
       closes: values.map(v => parseFloat(v.close)),
       volumes: values.map(v => parseFloat(v.volume) || 0),
-      intraday: interval !== "1day",
+      intraday: !DAILY_OR_LONGER_INTERVALS.includes(interval),
       intervalMs: INTERVAL_MS[interval],
     };
     chartState.cache[cacheKey] = series;
@@ -234,10 +340,16 @@ function showChartUnavailable(message) {
 // gaps most of the width and squeeze each day's real data into a thin
 // sliver, which is exactly what made the 1W chart look "really weird"
 // (found 2026-08-06). Index-based spacing avoids that, same as 3M/6M.
-function getXMapper(series, plotW) {
+// visStart/visEnd (inclusive indices) default to the full series — pass
+// the current zoom window (getVisibleIndices) to map only that slice onto
+// plotW, so zooming in spreads fewer points across the same pixel width.
+function getXMapper(series, plotW, visStart, visEnd) {
+  if (visStart === undefined) visStart = 0;
+  if (visEnd === undefined) visEnd = series.closes.length - 1;
+
   if (series.intraday && chartState.range !== "1W") {
-    let minT = series.timesMs[0];
-    let maxT = series.timesMs[series.timesMs.length - 1];
+    let minT = series.timesMs[visStart];
+    let maxT = series.timesMs[visEnd];
 
     // 1D/4H specifically: extend the axis to the full session window
     // (4am-8pm) so there's actual pixel space to shade pre-market/
@@ -247,8 +359,8 @@ function getXMapper(series, plotW) {
     // regular-hours boundary, leaving zero width for those bands
     // (drawSessionShading would compute from >= to and draw nothing).
     if (chartState.range === "1D" || chartState.range === "4H") {
-      const firstDateStr = series.times[0].slice(0, 10);
-      const lastDateStr = series.times[series.times.length - 1].slice(0, 10);
+      const firstDateStr = series.times[visStart].slice(0, 10);
+      const lastDateStr = series.times[visEnd].slice(0, 10);
       minT = Math.min(minT, parseNaiveTime(`${firstDateStr} 04:00:00`));
       maxT = Math.max(maxT, parseNaiveTime(`${lastDateStr} 20:00:00`));
     }
@@ -260,8 +372,8 @@ function getXMapper(series, plotW) {
       minT, maxT,
       indexForX: mouseX => {
         const targetT = minT + ((mouseX - PAD_LEFT) / plotW) * span;
-        let closest = 0, closestDist = Infinity;
-        for (let i = 0; i < series.timesMs.length; i++) {
+        let closest = visStart, closestDist = Infinity;
+        for (let i = visStart; i <= visEnd; i++) {
           const d = Math.abs(series.timesMs[i] - targetT);
           if (d < closestDist) { closestDist = d; closest = i; }
         }
@@ -269,12 +381,12 @@ function getXMapper(series, plotW) {
       },
     };
   }
-  const n = series.closes.length;
+  const n = visEnd - visStart;
   return {
-    xFor: i => PAD_LEFT + (i / (n - 1)) * plotW,
+    xFor: i => PAD_LEFT + ((i - visStart) / (n || 1)) * plotW,
     xForTime: null,
     minT: null, maxT: null,
-    indexForX: mouseX => Math.round(((mouseX - PAD_LEFT) / plotW) * (n - 1)),
+    indexForX: mouseX => Math.round(((mouseX - PAD_LEFT) / plotW) * (n || 1)) + visStart,
   };
 }
 
@@ -327,7 +439,13 @@ function renderAllPanels(series, hoverIdx) {
   rsiChartEl.parentElement.classList.remove("hidden");
   macdChartEl.parentElement.classList.remove("hidden");
 
-  const sr = computeSupportResistance(series.closes);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  resetZoomBtn.classList.toggle("hidden", !chartState.zoomRange);
+
+  // Support/resistance rescoped to what's actually visible when zoomed —
+  // levels from far outside the current view aren't useful reference
+  // points once you've zoomed into a narrower window.
+  const sr = computeSupportResistance(series.closes.slice(visStart, visEnd + 1));
   chartState.sr = sr;
   renderPricePanel(series, sr, hoverIdx);
   renderVolumePanel(series, hoverIdx);
@@ -382,12 +500,14 @@ function drawHoverLine(ctx, x, padTop, plotH) {
 }
 
 function attachHover(canvas, series, plotW) {
-  const xmap = getXMapper(series, plotW);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
   canvas.onmousemove = e => {
+    if (isPanningChart) return; // dragging takes priority over hover/tooltip
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const idx = xmap.indexForX(mouseX);
-    if (idx < 0 || idx >= series.closes.length) { chartTooltipEl.classList.add("hidden"); return; }
+    if (idx < visStart || idx > visEnd) { chartTooltipEl.classList.add("hidden"); return; }
     renderAllPanels(series, idx);
   };
   canvas.onmouseleave = () => {
@@ -404,15 +524,22 @@ function renderPricePanel(series, sr, hoverIdx) {
   const padTop = 10, padBottom = 24;
   const plotW = w - PAD_LEFT - PAD_RIGHT;
   const plotH = h - padTop - padBottom;
-  const xmap = getXMapper(series, plotW);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
   const { closes, times } = series;
 
+  // SMA/EMA still computed over the FULL series (a 20-day average needs
+  // real data from before the visible window to be correct) — only the
+  // OUTPUT gets sliced to the visible range, both for y-axis scaling here
+  // and for what actually gets drawn further down.
+  const smaFull20 = computeSMA(closes, 20), smaFull50 = computeSMA(closes, 50), emaFull20 = computeEMA(closes, 20);
   const overlayValues = [];
-  if (chartState.overlays.sma20) overlayValues.push(...computeSMA(closes, 20).filter(chartIsNum));
-  if (chartState.overlays.sma50) overlayValues.push(...computeSMA(closes, 50).filter(chartIsNum));
-  if (chartState.overlays.ema20) overlayValues.push(...computeEMA(closes, 20).filter(chartIsNum));
+  if (chartState.overlays.sma20) overlayValues.push(...smaFull20.slice(visStart, visEnd + 1).filter(chartIsNum));
+  if (chartState.overlays.sma50) overlayValues.push(...smaFull50.slice(visStart, visEnd + 1).filter(chartIsNum));
+  if (chartState.overlays.ema20) overlayValues.push(...emaFull20.slice(visStart, visEnd + 1).filter(chartIsNum));
 
-  const allLevels = [...closes, ...sr.support, ...sr.resistance, ...overlayValues];
+  const visibleCloses = closes.slice(visStart, visEnd + 1);
+  const allLevels = [...visibleCloses, ...sr.support, ...sr.resistance, ...overlayValues];
   const min = Math.min(...allLevels);
   const max = Math.max(...allLevels);
   const yFor = price => padTop + plotH - ((price - min) / (max - min || 1)) * plotH;
@@ -435,11 +562,12 @@ function renderPricePanel(series, sr, hoverIdx) {
     ctx.fillText(chartFormatCurrency(t), 4, y);
   });
 
-  // x-axis labels
-  const xLabelCount = Math.min(5, times.length);
+  // x-axis labels — spread across the visible window only
+  const visibleSpan = visEnd - visStart;
+  const xLabelCount = Math.min(5, visibleSpan + 1);
   ctx.textBaseline = "top";
   for (let i = 0; i < xLabelCount; i++) {
-    const idx = Math.round((i / (xLabelCount - 1 || 1)) * (times.length - 1));
+    const idx = visStart + Math.round((i / (xLabelCount - 1 || 1)) * visibleSpan);
     ctx.fillText(formatChartDate(times[idx], series.intraday), xmap.xFor(idx) - 14, h - padBottom + 6);
   }
 
@@ -454,12 +582,14 @@ function renderPricePanel(series, sr, hoverIdx) {
   // straight diagonal. Candles don't need that treatment since each one
   // is drawn independently at its own x position; the gap just shows up
   // as extra horizontal spacing between bars, which is the desired look.
-  const segments = getSegments(series);
-  const trendUp = closes[closes.length - 1] >= closes[0];
+  // Segments are clipped to the visible window so trend color and the
+  // area fill reflect what's actually zoomed into, not the whole series.
+  const segments = clipSegments(getSegments(series), visStart, visEnd);
+  const trendUp = closes[visEnd] >= closes[visStart];
   const lineColor = trendUp ? "#1baf7a" : "#d03b3b";
 
   if (chartState.chartType === "candles") {
-    drawCandles(ctx, series, xmap, yFor, plotW);
+    drawCandles(ctx, series, xmap, yFor, plotW, visStart, visEnd);
   } else {
     const gradient = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
     gradient.addColorStop(0, trendUp ? "rgba(27,175,122,0.18)" : "rgba(208,59,59,0.18)");
@@ -500,9 +630,9 @@ function renderPricePanel(series, sr, hoverIdx) {
       ctx.stroke();
     });
   };
-  if (chartState.overlays.sma20) drawOverlay(computeSMA(closes, 20), "#e0ab2e");
-  if (chartState.overlays.sma50) drawOverlay(computeSMA(closes, 50), "#7ea0ff");
-  if (chartState.overlays.ema20) drawOverlay(computeEMA(closes, 20), "#e66767");
+  if (chartState.overlays.sma20) drawOverlay(smaFull20, "#e0ab2e");
+  if (chartState.overlays.sma50) drawOverlay(smaFull50, "#7ea0ff");
+  if (chartState.overlays.ema20) drawOverlay(emaFull20, "#e66767");
 
   // hover crosshair + tooltip
   if (chartIsNum(hoverIdx)) {
@@ -533,10 +663,20 @@ function renderPricePanel(series, sr, hoverIdx) {
 // line, which needs session-gap-aware segmenting) — a gap between trading
 // sessions just shows up as extra horizontal space between bars, which is
 // the normal look for a candlestick chart.
-function drawCandles(ctx, series, xmap, yFor, plotW) {
-  const n = series.closes.length;
-  const candleW = Math.max(2, Math.min(10, (plotW / n) * 0.6));
-  for (let i = 0; i < n; i++) {
+function drawCandles(ctx, series, xmap, yFor, plotW, visStart, visEnd) {
+  if (visStart === undefined) visStart = 0;
+  if (visEnd === undefined) visEnd = series.closes.length - 1;
+  const n = visEnd - visStart + 1;
+  // Bar width from the REAL spacing between data points, not plotW/n.
+  // 1D/4H extend the x-axis out to the full 4am-8pm session window (for
+  // session shading), so the actual trading-hours bars only occupy part
+  // of that width — plotW/n assumed they were spread evenly across the
+  // whole thing, which made candles wider than their real spacing and
+  // overlap each other. xFor(end) - xFor(start) measures the true span
+  // the visible bars occupy, however the axis (and zoom level) is set up.
+  const dataSpan = n > 1 ? xmap.xFor(visEnd) - xmap.xFor(visStart) : plotW;
+  const candleW = Math.max(2, Math.min(14, (dataSpan / Math.max(n - 1, 1)) * 0.6));
+  for (let i = visStart; i <= visEnd; i++) {
     const x = xmap.xFor(i);
     const open = series.opens[i], close = series.closes[i], high = series.highs[i], low = series.lows[i];
     if (![open, close, high, low].every(chartIsNum)) continue;
@@ -577,16 +717,19 @@ function renderVolumePanel(series, hoverIdx) {
   ctx.clearRect(0, 0, w, h);
   const { volumes, closes } = series;
   const plotW = w - PAD_LEFT - PAD_RIGHT;
-  const xmap = getXMapper(series, plotW);
-  const max = Math.max(...volumes, 1);
-  const barW = Math.max(plotW / volumes.length, 1);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
+  const visibleVolumes = volumes.slice(visStart, visEnd + 1);
+  const max = Math.max(...visibleVolumes, 1);
+  const barW = Math.max(plotW / visibleVolumes.length, 1);
 
-  volumes.forEach((v, i) => {
+  for (let i = visStart; i <= visEnd; i++) {
+    const v = volumes[i];
     const barH = (v / max) * (h - 4);
-    const up = i === 0 || closes[i] >= closes[i - 1];
+    const up = i === visStart || closes[i] >= closes[i - 1];
     ctx.fillStyle = up ? "rgba(27,175,122,0.55)" : "rgba(208,59,59,0.55)";
     ctx.fillRect(xmap.xFor(i) - barW / 2, h - barH, Math.max(barW - 1, 1), barH);
-  });
+  }
 
   if (chartIsNum(hoverIdx)) {
     const x = xmap.xFor(hoverIdx);
@@ -641,7 +784,8 @@ function renderRSIPanel(series, hoverIdx) {
   ctx.clearRect(0, 0, w, h);
   const rsi = computeRSI(series.closes, 14);
   const plotW = w - PAD_LEFT - PAD_RIGHT;
-  const xmap = getXMapper(series, plotW);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
   const padTop = 6, padBottom = 6;
   const plotH = h - padTop - padBottom;
   const yFor = v => padTop + plotH - (v / 100) * plotH;
@@ -656,7 +800,7 @@ function renderRSIPanel(series, hoverIdx) {
     ctx.setLineDash([]);
   });
 
-  getSegments(series).forEach(([segStart, segEnd]) => {
+  clipSegments(getSegments(series), visStart, visEnd).forEach(([segStart, segEnd]) => {
     ctx.beginPath();
     let started = false;
     for (let i = segStart; i <= segEnd; i++) {
@@ -706,9 +850,10 @@ function renderMACDPanel(series, hoverIdx) {
   ctx.clearRect(0, 0, w, h);
   const { macdLine, signalLine, histogram } = computeMACD(series.closes);
   const plotW = w - PAD_LEFT - PAD_RIGHT;
-  const xmap = getXMapper(series, plotW);
+  const [visStart, visEnd] = getVisibleIndices(series);
+  const xmap = getXMapper(series, plotW, visStart, visEnd);
 
-  const values = [...macdLine, ...signalLine, ...histogram].filter(chartIsNum);
+  const values = [macdLine, signalLine, histogram].flatMap(arr => arr.slice(visStart, visEnd + 1)).filter(chartIsNum);
   if (values.length === 0) return;
   const max = Math.max(...values.map(Math.abs), 0.01);
   const padTop = 6, padBottom = 6;
@@ -722,15 +867,16 @@ function renderMACDPanel(series, hoverIdx) {
   ctx.lineTo(w - PAD_RIGHT, mid);
   ctx.stroke();
 
-  const barW = Math.max(plotW / histogram.length, 1);
-  histogram.forEach((v, i) => {
-    if (!chartIsNum(v)) return;
+  const barW = Math.max(plotW / (visEnd - visStart + 1), 1);
+  for (let i = visStart; i <= visEnd; i++) {
+    const v = histogram[i];
+    if (!chartIsNum(v)) continue;
     const y0 = yFor(0), y1 = yFor(v);
     ctx.fillStyle = v >= 0 ? "rgba(27,175,122,0.5)" : "rgba(208,59,59,0.5)";
     ctx.fillRect(xmap.xFor(i) - barW / 2, Math.min(y0, y1), Math.max(barW - 1, 1), Math.abs(y1 - y0));
-  });
+  }
 
-  const segments = getSegments(series);
+  const segments = clipSegments(getSegments(series), visStart, visEnd);
   const drawLine = (arr, color) => {
     segments.forEach(([segStart, segEnd]) => {
       ctx.beginPath();

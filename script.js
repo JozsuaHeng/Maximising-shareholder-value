@@ -1,5 +1,28 @@
 // ---- Config ----
 const THEME_KEY = "stockDashboardTheme";
+const RECENTLY_VIEWED_KEY = "stockDashboardRecentlyViewed";
+const RECENTLY_VIEWED_MAX = 8;
+
+// Purely local — zero API cost. Used to power the homepage's "Recently
+// Viewed" strip (home.js) without fetching anything extra.
+function recordRecentlyViewed(symbol, name) {
+  try {
+    const list = getRecentlyViewed().filter(item => item.symbol !== symbol);
+    list.unshift({ symbol, name });
+    localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(list.slice(0, RECENTLY_VIEWED_MAX)));
+  } catch {
+    // localStorage unavailable (e.g. private browsing) — just skip tracking
+  }
+}
+
+function getRecentlyViewed() {
+  try {
+    const raw = localStorage.getItem(RECENTLY_VIEWED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 // Local (Live Server) calls Finnhub directly using config.js's key.
 // Deployed (Cloudflare Pages) calls the /api/finnhub proxy instead, which
@@ -9,7 +32,17 @@ const THEME_KEY = "stockDashboardTheme";
 // FINNHUB_API_KEY/TWELVE_DATA_API_KEY when IS_LOCAL_DEV is false).
 const IS_LOCAL_DEV = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 
+// Every Finnhub request, whether called directly (local dev) or proxied
+// (deployed), builds its URL through this one function — so it's the one
+// place to log "a Finnhub request is about to be sent" for the API usage
+// widget (apiUsage.js). This tracks requests THIS BROWSER TAB initiated,
+// not actual Finnhub hits — some of these get served from Cloudflare's
+// edge cache and never reach Finnhub at all, so it's an upper-bound
+// estimate, not a precise live quota. See apiUsage.js for why a fully
+// accurate shared counter isn't possible from the client.
+const finnhubCallLog = [];
 function finnhubUrl(path, params) {
+  finnhubCallLog.push(Date.now());
   const search = new URLSearchParams(params || {});
   if (IS_LOCAL_DEV) {
     search.set("token", FINNHUB_API_KEY);
@@ -128,6 +161,7 @@ function goHome() {
   homeView.classList.remove("hidden");
   tickerInput.value = "";
   setStatus("");
+  if (typeof renderRecentlyViewed === "function") renderRecentlyViewed();
 }
 
 // ---- Fetch helper ----
@@ -236,6 +270,7 @@ async function loadTicker(symbol) {
     const metric = metricRes.metric || {};
     currentIndustry = profile.finnhubIndustry || null;
     currentBucket = getSectorBucket(currentIndustry);
+    recordRecentlyViewed(symbol, profile.name || symbol);
 
     renderOverview(symbol, quote, profile);
     renderCompanyFacts(profile);

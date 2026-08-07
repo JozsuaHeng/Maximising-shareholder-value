@@ -18,6 +18,11 @@
       </div>
     </div>
     <div class="header-right">
+      <div class="api-usage" id="apiUsageWidget" title="Approximate — counts requests your browser has sent, not actual Finnhub hits (some are served from cache and never reach Finnhub at all).">
+        <div class="api-usage-label">Finnhub usage (est.)</div>
+        <div class="api-usage-bar"><div class="api-usage-fill" id="apiUsageFill"></div></div>
+        <div class="api-usage-text" id="apiUsageText">0 / 60 this min</div>
+      </div>
       <div class="market-clock" id="marketClock">
         <div class="clock-time" id="clockTime">--:--:--</div>
         <div class="clock-meta" id="clockMeta">Detecting timezone...</div>
@@ -39,6 +44,14 @@
 
 <section id="homeView" class="home-view">
   <div class="home-decor" aria-hidden="true"></div>
+
+  <div class="card world-markets-card">
+    <h3>Global Markets <span class="card-subtitle" id="worldMarketsSummary"></span></h3>
+    <div id="worldMarketsMap" class="world-markets-map"></div>
+  </div>
+
+  <div id="indexStrip" class="index-strip"></div>
+  <div id="recentlyViewedRow" class="recently-viewed-row hidden"></div>
 
   <div class="home-controls">
     <div id="homeTabs" class="home-tabs"></div>
@@ -122,6 +135,8 @@
         <button data-range="1W">1W</button>
         <button data-range="3M">3M</button>
         <button data-range="6M" class="active">6M</button>
+        <button data-range="1Y">1Y</button>
+        <button data-range="5Y">5Y</button>
       </div>
       <div class="chart-overlay-row" id="chartOverlayRow">
         <button data-overlay="sma20">SMA 20</button>
@@ -137,7 +152,9 @@
       <div class="chart-wrap" id="chartWrap">
         <canvas id="priceChart" data-css-height="340" height="340"></canvas>
         <div id="chartTooltip" class="chart-tooltip hidden"></div>
+        <button id="resetZoomBtn" class="reset-zoom-btn hidden" title="Back to the full range">⤢ Reset zoom</button>
       </div>
+      <p class="muted small zoom-hint">Scroll to zoom, drag to pan once zoomed in.</p>
       <p id="chartNote" class="muted hidden"></p>
 
       <div class="chart-subpanel">
@@ -304,6 +321,8 @@
 <script src="analysis.js"></script>
 <script src="clock.js"></script>
 <script src="script.js"></script>
+<script src="apiUsage.js"></script>
+<script src="worldMarkets.js"></script>
 <script src="home.js"></script>
 <script src="chart.js"></script>
 <script src="invest.js"></script>

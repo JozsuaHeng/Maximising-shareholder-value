@@ -7,11 +7,5 @@
     "directory": "./",
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
-  },
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
-  "kv_namespaces": [
-    { "binding": "HOME_CACHE", "id": "df39e229e1544feea93c4f806458f93d" }
-  ]
+  }
 }

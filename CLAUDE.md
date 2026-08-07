@@ -365,33 +365,24 @@ acquired or disposed), and price. Deliberately does NOT try to interpret
 transaction codes as bullish/bearish beyond that — many insider sales are
 routine (vesting, taxes, 10b5-1 plans) and the UI note says so.
 
-## Background pre-warming: Cron + KV (2026-08-04)
+## Background pre-warming: Cron + KV (2026-08-04) — REMOVED 2026-08-07
 
-Rate-limit fixes up to this point only reduced how often the ceiling got
-hit; this is the structural fix. `worker.js` now has a `scheduled()`
-handler (cron trigger in `wrangler.jsonc`, every 5 minutes) that
-proactively fetches all `PREWARM_SYMBOLS` (must stay in sync with
-`HOME_CATEGORIES` in `home.js`, minus crypto) plus one CoinGecko batch
-call, writing results into a KV namespace bound as `HOME_CACHE`.
-`handleFinnhub()`/`handleCoinGecko()` check KV first for matching
-requests before falling through to the normal live-fetch-and-cache path
-— so real user requests for curated symbols are typically served from KV
-and never touch Finnhub/CoinGecko's rate limits at all.
-
-Chose KV over the existing Cache API for this specifically because Cache
-API is per-edge-location — a cron run executing in one location wouldn't
-warm the cache for a visitor hitting a different one. KV is globally
-readable, which is what a background-prewarm pattern actually needs.
-
-**Requires a KV namespace the user has to create via the Cloudflare
-dashboard** (can't be provisioned from code/API access available here) —
-`wrangler.jsonc`'s `kv_namespaces[0].id` is a placeholder
-(`REPLACE_WITH_YOUR_KV_NAMESPACE_ID`) until they provide the real ID. All
-KV access in `worker.js` is guarded with `if (env.HOME_CACHE)` checks, so
-nothing breaks if the binding isn't set up yet — the app just runs
-exactly as it did before this feature, without the speedup. Don't remove
-those guards; a missing binding would otherwise throw on every request.
-Real namespace ID (`df39e229e1544feea93c4f806458f93d`) now wired in.
+`worker.js` briefly had a `scheduled()` cron handler (every 5 minutes)
+that proactively wrote ~36 curated symbols + 1 crypto batch into a KV
+namespace (`HOME_CACHE`), so real visitors could read from a globally-warm
+cache instead of calling Finnhub/CoinGecko directly. It worked, but the
+math didn't fit the free tier it was built on: 288 cron runs/day × 37 KV
+writes/run ≈ 10,600 writes/day against Workers KV's free-tier cap of
+1,000 writes/day — the account was blowing past the quota by roughly an
+hour into every day, which is what triggered Cloudflare's recurring "KV
+operations nearing daily cap" emails. Removed entirely at the user's
+request in favor of refresh-on-demand: real requests just use the
+existing per-edge Cache API in `proxy()` (see below), so KV usage tracks
+actual traffic instead of running a fixed, traffic-independent sweep
+around the clock. `wrangler.jsonc`'s `triggers`/`kv_namespaces` blocks and
+the KV namespace itself (`df39e229e1544feea93c4f806458f93d`) are no
+longer used — don't re-add a cron+KV pre-warm layer without redoing this
+math against whatever the actual traffic/tier situation is at the time.
 
 ## Chart range semantics fix (2026-08-04)
 
