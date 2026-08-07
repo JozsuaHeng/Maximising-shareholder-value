@@ -488,6 +488,19 @@ function formatChartDate(iso, intraday) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// Fuller "date, time" format for the hover tooltip specifically (the
+// compact x-axis labels above stay as just date OR time — there isn't
+// room to show both there). Daily/weekly bars have no real intraday
+// timestamp, so only intraday series get a time component — showing a
+// fabricated "12:00 AM" for a daily bar would be actively misleading.
+function formatChartTooltipDateTime(iso, intraday) {
+  const d = new Date(iso.replace(" ", "T"));
+  const datePart = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  if (!intraday) return datePart;
+  const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${datePart}, ${timePart}`;
+}
+
 function drawHoverLine(ctx, x, padTop, plotH) {
   ctx.save();
   ctx.beginPath();
@@ -644,10 +657,10 @@ function renderPricePanel(series, sr, hoverIdx) {
     ctx.fill();
 
     chartTooltipEl.textContent = chartState.chartType === "candles"
-      ? `${formatChartDate(times[hoverIdx], series.intraday)} · O ${chartFormatCurrency(series.opens[hoverIdx])} H ${chartFormatCurrency(series.highs[hoverIdx])} L ${chartFormatCurrency(series.lows[hoverIdx])} C ${chartFormatCurrency(closes[hoverIdx])}`
-      : `${formatChartDate(times[hoverIdx], series.intraday)} · ${chartFormatCurrency(closes[hoverIdx])}`;
+      ? `${formatChartTooltipDateTime(times[hoverIdx], series.intraday)} · O ${chartFormatCurrency(series.opens[hoverIdx])} H ${chartFormatCurrency(series.highs[hoverIdx])} L ${chartFormatCurrency(series.lows[hoverIdx])} C ${chartFormatCurrency(closes[hoverIdx])}`
+      : `${formatChartTooltipDateTime(times[hoverIdx], series.intraday)} · ${chartFormatCurrency(closes[hoverIdx])}`;
     chartTooltipEl.classList.remove("hidden");
-    const tooltipW = chartState.chartType === "candles" ? 230 : 120;
+    const tooltipW = chartState.chartType === "candles" ? 280 : (series.intraday ? 190 : 150);
     const left = Math.min(Math.max(x - 50, 0), w - tooltipW);
     chartTooltipEl.style.left = `${left}px`;
     chartTooltipEl.style.top = `${Math.max(y - 34, 0)}px`;

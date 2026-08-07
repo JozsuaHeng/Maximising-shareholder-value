@@ -28,15 +28,15 @@ const CRYPTO_ITEMS = Object.keys(CRYPTO_COINGECKO_IDS).map(symbol => [symbol, { 
 // local dev — this always goes through the deployed Worker.
 const FRED_PROXY_BASE = "https://maximising-shareholder-value.jozsua-heng.workers.dev";
 
-function coingeckoUrl(params) {
+function coingeckoUrl(path, params) {
   const search = new URLSearchParams(params || {});
   if (IS_LOCAL_DEV) {
     if (typeof COINGECKO_API_KEY !== "undefined" && COINGECKO_API_KEY && COINGECKO_API_KEY !== "YOUR_COINGECKO_KEY_HERE") {
       search.set("x_cg_demo_api_key", COINGECKO_API_KEY);
     }
-    return `https://api.coingecko.com/api/v3/simple/price?${search.toString()}`;
+    return `https://api.coingecko.com/api/v3${path}?${search.toString()}`;
   }
-  search.set("path", "/simple/price");
+  search.set("path", path);
   return `/api/coingecko?${search.toString()}`;
 }
 
@@ -111,6 +111,10 @@ const INDEX_STRIP_SYMBOLS = [
   ["QQQ", "Nasdaq 100"],
   ["DIA", "Dow Jones"],
   ["IWM", "Russell 2000"],
+  ["GLD", "Gold"],
+  ["USO", "Oil"],
+  ["EFA", "Developed Mkts"],
+  ["EEM", "Emerging Mkts"],
 ];
 
 function initHome() {
@@ -209,9 +213,10 @@ async function switchTab(tabId) {
   const isDynamic = DYNAMIC_TABS.some(t => t.id === tabId);
   const isCrypto = tabId === "crypto";
 
-  // Grid/Heatmap only makes sense where there's a live % change to color
-  // by — browse categories (name + ticker only) don't have one.
-  homeViewToggleEl.classList.toggle("hidden", !isDynamic && !isCrypto);
+  // Grid/Heatmap only makes sense for the stock ranking tabs — browse
+  // categories have no live % change to color by, and crypto has its own
+  // dedicated table (buildCryptoTable) instead of the grid/heatmap tiles.
+  homeViewToggleEl.classList.toggle("hidden", !isDynamic);
 
   if (!isDynamic && !isCrypto) {
     renderBrowseCategory(tabId);
@@ -257,12 +262,23 @@ async function ensureRankingLoaded() {
 async function ensureCryptoLoaded() {
   if (homeState.cryptoLoaded) return;
   try {
+    // /coins/markets instead of /simple/price — same single-call cost
+    // (still one request for all 6 coins), but returns market cap, 24h
+    // volume, circulating/max supply, and all-time-high/low — genuinely
+    // crypto-specific data with no real stock equivalent, versus the old
+    // endpoint's bare price + 24h change.
     const ids = CRYPTO_ITEMS.map(([symbol]) => CRYPTO_COINGECKO_IDS[symbol]).join(",");
-    const data = await fetchJSON(coingeckoUrl({ ids, vs_currencies: "usd", include_24hr_change: "true" }));
+    const data = await fetchJSON(coingeckoUrl("/coins/markets", { vs_currency: "usd", ids, order: "market_cap_desc" }));
+    const byId = {};
+    (Array.isArray(data) ? data : []).forEach(coin => { byId[coin.id] = coin; });
     CRYPTO_ITEMS.forEach(([symbol, name]) => {
-      const entry = data[CRYPTO_COINGECKO_IDS[symbol]];
-      if (entry && isNum(entry.usd)) {
-        homeState.quotes[symbol] = { symbol, name, quote: { c: entry.usd, dp: entry.usd_24h_change ?? 0 } };
+      const coin = byId[CRYPTO_COINGECKO_IDS[symbol]];
+      if (coin && isNum(coin.current_price)) {
+        homeState.quotes[symbol] = {
+          symbol, name,
+          quote: { c: coin.current_price, dp: coin.price_change_percentage_24h ?? 0 },
+          crypto: coin,
+        };
       }
     });
     homeState.cryptoLoaded = true;
@@ -298,7 +314,12 @@ function renderActiveTab() {
     return;
   }
 
-  homeContentEl.appendChild(homeState.viewMode === "heatmap" ? buildHeatmap(items) : buildGrid(items));
+  // Crypto gets its own table instead of the plain price/% tiles used for
+  // stocks — market cap, volume, supply, and distance from all-time-high
+  // are the numbers people actually look for with crypto and don't have
+  // a real stock-page equivalent, so reusing the stock tile made the tab
+  // feel thin. buildGrid/buildHeatmap stay unused for crypto now.
+  homeContentEl.appendChild(tabId === "crypto" ? buildCryptoTable(items) : (homeState.viewMode === "heatmap" ? buildHeatmap(items) : buildGrid(items)));
 
   if (tabId === "active") {
     const note = document.createElement("p");
@@ -306,6 +327,69 @@ function renderActiveTab() {
     note.textContent = "Ranked by size of today's price move — real trading volume isn't available on the free data tier.";
     homeContentEl.appendChild(note);
   }
+}
+
+function formatCompactUsd(v) {
+  if (!isNum(v)) return "N/A";
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+  return `$${v.toLocaleString()}`;
+}
+
+function formatCompactSupply(v) {
+  if (!isNum(v)) return "N/A";
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
+  return v.toLocaleString();
+}
+
+function buildCryptoTable(items) {
+  const wrap = document.createElement("div");
+  wrap.className = "crypto-table-scroll";
+  const table = document.createElement("table");
+  table.className = "crypto-table";
+
+  const theadRow = ["Coin", "Price", "24h", "Market Cap", "24h Volume", "Circulating Supply", "From All-Time High"];
+  table.innerHTML = `<thead><tr>${theadRow.map(h => `<th>${h}</th>`).join("")}</tr></thead>`;
+
+  const tbody = document.createElement("tbody");
+  items
+    .slice()
+    .sort((a, b) => (b.crypto?.market_cap ?? 0) - (a.crypto?.market_cap ?? 0))
+    .forEach(({ symbol, name, quote, crypto }) => {
+      const row = document.createElement("tr");
+      row.className = "crypto-table-row";
+      row.addEventListener("click", () => loadTicker(symbol));
+
+      const dp = quote.dp ?? 0;
+      const athPct = crypto && isNum(crypto.ath_change_percentage) ? crypto.ath_change_percentage : null;
+      const supplyPct = crypto && isNum(crypto.circulating_supply) && isNum(crypto.max_supply) && crypto.max_supply > 0
+        ? (crypto.circulating_supply / crypto.max_supply) * 100 : null;
+
+      row.innerHTML = `
+        <td><strong>${name}</strong> <span class="muted small">${crypto?.symbol ? crypto.symbol.toUpperCase() : displaySymbol(symbol)}</span></td>
+        <td>${formatCurrency(quote.c)}</td>
+        <td class="${dp >= 0 ? "positive" : "negative"}">${dp >= 0 ? "+" : ""}${dp.toFixed(2)}%</td>
+        <td>${formatCompactUsd(crypto?.market_cap)}${crypto?.market_cap_rank ? ` <span class="muted small">#${crypto.market_cap_rank}</span>` : ""}</td>
+        <td>${formatCompactUsd(crypto?.total_volume)}</td>
+        <td>${formatCompactSupply(crypto?.circulating_supply)}${supplyPct !== null ? ` <span class="muted small">(${supplyPct.toFixed(0)}% of max)</span>` : ""}</td>
+        <td class="${athPct !== null && athPct >= -1 ? "positive" : ""}">${athPct !== null ? `${athPct.toFixed(1)}%` : "N/A"}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  const note = document.createElement("p");
+  note.className = "muted small home-note";
+  note.textContent = "Market cap, volume, supply, and all-time-high data via CoinGecko. \"From All-Time High\" shows how far below (or, rarely, above) each coin's record price it's currently trading.";
+
+  const outer = document.createElement("div");
+  outer.appendChild(wrap);
+  outer.appendChild(note);
+  return outer;
 }
 
 // Name + ticker only — no quote, no fetch. Used for the browse categories.

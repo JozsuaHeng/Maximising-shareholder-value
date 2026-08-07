@@ -337,7 +337,7 @@ async function loadSecondaryData(symbol, profile, myToken) {
   renderShares(profile, financialsRes);
   renderOwnership();
   renderFilings(filingsRes);
-  renderInsiderTransactions(insiderRes);
+  renderInsiderTransactions(insiderRes, profile);
   renderPeers(peersRes, symbol);
   renderNews(newsRes, newsContent);
 }
@@ -349,7 +349,10 @@ async function loadSecondaryData(symbol, profile, myToken) {
 // exactly like a broken setup.
 function describeFetchError(err) {
   if (err && err.status === 429) {
-    return "Finnhub's free-tier rate limit (60 requests/minute) was hit — this is temporary. Wait about 30 seconds and search again.";
+    // Kept brief on purpose — the header's "Finnhub usage" widget already
+    // shows the live count against the 60/min limit and when it resets,
+    // so repeating the full explanation down here was redundant.
+    return "Rate limited — try again shortly.";
   }
   if (err && (err.status === 401 || err.status === 403)) {
     return IS_LOCAL_DEV
@@ -525,11 +528,12 @@ async function fetchCompanyDescription(companyDisplayName) {
 // the cards above, just re-expressed against a concrete $100 so the
 // abstract ratio/percentage has a tangible anchor. Zero extra API cost:
 // pure arithmetic on data already on the page.
-function renderRealLifeExample(containerId, html) {
+function renderRealLifeExample(containerId, points) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (!html) { el.innerHTML = ""; return; }
-  el.innerHTML = `<p class="real-life-example-label">In plain numbers</p><p class="real-life-example-text">${html}</p>`;
+  const list = (points || []).filter(Boolean);
+  if (list.length === 0) { el.innerHTML = ""; return; }
+  el.innerHTML = `<p class="real-life-example-label">In plain numbers</p><ul class="real-life-example-list">${list.map(p => `<li>${p}</li>`).join("")}</ul>`;
 }
 
 function renderValuation(metric, profile) {
@@ -546,9 +550,11 @@ function renderValuation(metric, profile) {
   items.forEach(([label, value, defKey, isPercent]) => valuationGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
   const pe = metric.peTTM;
-  renderRealLifeExample("valuationExample", isNum(pe) && pe > 0
-    ? `Put $100 into this stock and you're claiming about <strong>$${(100 / pe).toFixed(2)}</strong> of the company's annual earnings. That's the flip side of a P/E of ${pe.toFixed(1)}: you're paying $${pe.toFixed(0)} today for every $1 the company earns in a year.`
-    : null);
+  const pb = metric.pbAnnual;
+  renderRealLifeExample("valuationExample", [
+    isNum(pe) && pe > 0 && `Put $100 into this stock and you're claiming about <strong>$${(100 / pe).toFixed(2)}</strong> of the company's annual earnings. That's the flip side of a P/E of ${pe.toFixed(1)}: you're paying $${pe.toFixed(0)} today for every $1 the company earns in a year.`,
+    isNum(pb) && pb > 0 && `That same $100 also buys a claim on about <strong>$${(100 / pb).toFixed(2)}</strong> of the company's net assets (what's left over if it sold everything and paid off all its debts) — a P/B of ${pb.toFixed(1)} means you're paying $${pb.toFixed(0)} for every $1 of that.`,
+  ]);
 }
 
 function renderGrowth(metric) {
@@ -562,9 +568,11 @@ function renderGrowth(metric) {
   items.forEach(([label, value, defKey, isPercent]) => growthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
   const rev = metric.revenueGrowthTTMYoy;
-  renderRealLifeExample("growthExample", isNum(rev)
-    ? `If this company made $100 in revenue this time last year, it's making about <strong>$${(100 * (1 + rev / 100)).toFixed(2)}</strong> now — that's what its ${rev >= 0 ? "+" : ""}${rev.toFixed(1)}% year-over-year revenue growth means in practice.`
-    : null);
+  const epsGrowth = metric.epsGrowthTTMYoy;
+  renderRealLifeExample("growthExample", [
+    isNum(rev) && `If this company made $100 in revenue this time last year, it's making about <strong>$${(100 * (1 + rev / 100)).toFixed(2)}</strong> now — that's what its ${rev >= 0 ? "+" : ""}${rev.toFixed(1)}% year-over-year revenue growth means in practice.`,
+    isNum(epsGrowth) && `If it earned $100 in profit per share last year, it's earning about <strong>$${(100 * (1 + epsGrowth / 100)).toFixed(2)}</strong> per share now — that's its ${epsGrowth >= 0 ? "+" : ""}${epsGrowth.toFixed(1)}% year-over-year EPS growth.`,
+  ]);
 }
 
 function renderProfitability(metric) {
@@ -577,12 +585,14 @@ function renderProfitability(metric) {
   ];
   items.forEach(([label, value, defKey, isPercent]) => profitabilityGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
+  const grossMargin = metric.grossMarginTTM;
   const netMargin = metric.netProfitMarginTTM;
   const roe = metric.roeTTM;
-  const parts = [];
-  if (isNum(netMargin)) parts.push(`For every $100 in sales, it keeps about <strong>$${netMargin.toFixed(2)}</strong> as actual profit after all costs (its net margin)`);
-  if (isNum(roe)) parts.push(`for every $100 shareholders have invested in the business, it generates about <strong>$${roe.toFixed(2)}</strong> back in profit each year (its return on equity)`);
-  renderRealLifeExample("profitabilityExample", parts.length ? `${parts.join(", and ")}.` : null);
+  renderRealLifeExample("profitabilityExample", [
+    isNum(grossMargin) && `For every $100 in sales, about <strong>$${grossMargin.toFixed(2)}</strong> is left after just the direct cost of making the product/service (its gross margin) — before rent, salaries, marketing, and everything else are even counted.`,
+    isNum(netMargin) && `After ALL costs — including those overheads, interest, and tax — it keeps about <strong>$${netMargin.toFixed(2)}</strong> of every $100 in sales as actual profit (its net margin).`,
+    isNum(roe) && `Separately, for every $100 shareholders have invested in the business, it generates about <strong>$${roe.toFixed(2)}</strong> back in profit each year (its return on equity).`,
+  ]);
 }
 
 function renderHealth(metric) {
@@ -595,9 +605,11 @@ function renderHealth(metric) {
   items.forEach(([label, value, defKey, isPercent]) => healthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
   const de = metric["totalDebt/totalEquityAnnual"];
-  renderRealLifeExample("healthExample", isNum(de)
-    ? `For every $100 of the company's own money (shareholder equity), it has borrowed about <strong>$${(de * 100).toFixed(2)}</strong> more from lenders and creditors — that's what a Debt-to-Equity ratio of ${de.toFixed(2)} means.`
-    : null);
+  const currentRatio = metric.currentRatioAnnual;
+  renderRealLifeExample("healthExample", [
+    isNum(de) && `For every $100 of the company's own money (shareholder equity), it has borrowed about <strong>$${(de * 100).toFixed(2)}</strong> more from lenders and creditors — that's what a Debt-to-Equity ratio of ${de.toFixed(2)} means.`,
+    isNum(currentRatio) && `For every $100 of bills it owes within the next year, it has about <strong>$${(currentRatio * 100).toFixed(2)}</strong> in cash and other assets that could be turned into cash within a year to cover them (its current ratio of ${currentRatio.toFixed(2)}).`,
+  ]);
 }
 
 function renderDividends(metric) {
@@ -610,9 +622,15 @@ function renderDividends(metric) {
   items.forEach(([label, value, defKey, isPercent]) => dividendsGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
   const yieldPct = metric.dividendYieldIndicatedAnnual;
-  renderRealLifeExample("dividendsExample", isNum(yieldPct) && yieldPct > 0
-    ? `Invest $100 in this stock today and you'd collect about <strong>$${yieldPct.toFixed(2)}</strong> per year in dividend payments alone (before taxes) — separate from any gain or loss in the share price itself.`
-    : `This company currently pays no meaningful dividend, so a $100 investment wouldn't generate cash income this way — any return would have to come from the share price itself changing.`);
+  const divGrowth5Y = metric.dividendGrowthRate5Y;
+  if (isNum(yieldPct) && yieldPct > 0) {
+    renderRealLifeExample("dividendsExample", [
+      `Invest $100 in this stock today and you'd collect about <strong>$${yieldPct.toFixed(2)}</strong> per year in dividend payments alone (before taxes) — separate from any gain or loss in the share price itself.`,
+      isNum(divGrowth5Y) && `That payout itself has also been growing: if it paid $100 in dividends 5 years ago, it's paying about <strong>$${(100 * (1 + divGrowth5Y / 100)).toFixed(2)}</strong> now (${divGrowth5Y >= 0 ? "+" : ""}${divGrowth5Y.toFixed(1)}% over 5 years).`,
+    ]);
+  } else {
+    renderRealLifeExample("dividendsExample", [`This company currently pays no meaningful dividend, so a $100 investment wouldn't generate cash income this way — any return would have to come from the share price itself changing.`]);
+  }
 }
 
 function renderMomentum(metric) {
@@ -626,9 +644,11 @@ function renderMomentum(metric) {
   items.forEach(([label, value, defKey, isPercent]) => momentumGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 
   const ytd = metric.yearToDatePriceReturnDaily;
-  renderRealLifeExample("momentumExample", isNum(ytd)
-    ? `$100 invested in this stock at the start of the year would be worth about <strong>$${(100 * (1 + ytd / 100)).toFixed(2)}</strong> today, based on its ${ytd >= 0 ? "+" : ""}${ytd.toFixed(1)}% year-to-date price move alone (not counting dividends).`
-    : null);
+  const week52 = metric["52WeekPriceReturnDaily"];
+  renderRealLifeExample("momentumExample", [
+    isNum(ytd) && `$100 invested in this stock at the start of this calendar year would be worth about <strong>$${(100 * (1 + ytd / 100)).toFixed(2)}</strong> today, based on its ${ytd >= 0 ? "+" : ""}${ytd.toFixed(1)}% year-to-date price move alone (not counting dividends).`,
+    isNum(week52) && `Looking at a full rolling 12 months instead (not just this calendar year), that same $100 would be worth about <strong>$${(100 * (1 + week52 / 100)).toFixed(2)}</strong>, based on its ${week52 >= 0 ? "+" : ""}${week52.toFixed(1)}% return over the past year.`,
+  ]);
 }
 
 function renderRange(metric) {
@@ -867,11 +887,16 @@ function renderShares(profile, financialsRes) {
 
   const legend = document.createElement("div");
   legend.className = "shares-legend";
+  // Finnhub reports total/float already in millions; the financials-
+  // reported figures (basic/diluted) come back as raw absolute counts.
+  // Multiply the former by 1e6 so every row shows the same real,
+  // un-abbreviated number — "(M)" labels were confusing (13,159.2M read
+  // like 13,159.2, not 13.16 billion).
   const rows = [
-    ["Total Shares Outstanding (M)", formatCount(total), "sharesOutstandingTotal"],
-    isNum(float) ? ["Public Float (M)", formatCount(float), "publicFloat"] : null,
-    isNum(basic) ? ["Weighted Avg. Basic Shares (M)", formatCount(basic / 1e6), "weightedAvgBasicShares"] : null,
-    isNum(diluted) ? ["Weighted Avg. Diluted Shares (M)", formatCount(diluted / 1e6), "weightedAvgDilutedShares"] : null,
+    ["Total Shares Outstanding", formatCount(total * 1e6), "sharesOutstandingTotal"],
+    isNum(float) ? ["Public Float", formatCount(float * 1e6), "publicFloat"] : null,
+    isNum(basic) ? ["Weighted Avg. Basic Shares", formatCount(basic), "weightedAvgBasicShares"] : null,
+    isNum(diluted) ? ["Weighted Avg. Diluted Shares", formatCount(diluted), "weightedAvgDilutedShares"] : null,
   ].filter(Boolean);
   rows.forEach(([label, value, defKey]) => {
     const row = document.createElement("div");
@@ -882,7 +907,7 @@ function renderShares(profile, financialsRes) {
     const helpBtn = document.createElement("button");
     helpBtn.className = "help-btn";
     helpBtn.textContent = "?";
-    helpBtn.addEventListener("click", () => showTooltip(label.replace(" (M)", ""), defKey));
+    helpBtn.addEventListener("click", () => showTooltip(label, defKey));
     l.appendChild(helpBtn);
     const v = document.createElement("span");
     v.className = "shares-row-value";
@@ -1018,21 +1043,27 @@ function renderFilings(filingsArr) {
   filingsContent.appendChild(note);
 }
 
-function renderInsiderTransactions(data) {
+function renderInsiderTransactions(data, profile) {
   const arr = data && Array.isArray(data.data) ? data.data : null;
   if (!arr || arr.length === 0) {
     insiderContent.innerHTML = '<p class="muted">No insider transaction data available for this symbol (common for non-US-listed companies, which don\'t file with the SEC).</p>';
     return;
   }
 
+  // Finnhub's shareOutstanding is already in millions — a raw share
+  // count on its own (e.g. "-65,000") doesn't say much without knowing
+  // how big the company is; expressing it as a % of total shares
+  // outstanding makes it comparable across any stock at a glance.
+  const totalShares = isNum(profile?.shareOutstanding) ? profile.shareOutstanding * 1e6 : null;
+
   const sorted = [...arr].sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate)).slice(0, 8);
 
   const table = document.createElement("div");
-  table.className = "earnings-table";
+  table.className = "earnings-table insider-table";
 
   const header = document.createElement("div");
   header.className = "earnings-row earnings-header";
-  ["Insider", "Date", "Shares Changed", "Price"].forEach(t => {
+  ["Insider", "Date", "Shares Changed", "% of Shares Out.", "Price"].forEach(t => {
     const c = document.createElement("div");
     c.textContent = t;
     header.appendChild(c);
@@ -1044,17 +1075,19 @@ function renderInsiderTransactions(data) {
     row.className = "earnings-row";
     const change = t.change;
     const acquired = isNum(change) ? change > 0 : null;
+    const pctOfShares = isNum(change) && totalShares ? (change / totalShares) * 100 : null;
 
     const cells = [
       t.name || "--",
       t.transactionDate || "--",
       isNum(change) ? `${change >= 0 ? "+" : ""}${change.toLocaleString()}` : "N/A",
+      isNum(pctOfShares) ? `${pctOfShares >= 0 ? "+" : ""}${pctOfShares.toFixed(4)}%` : "N/A",
       isNum(t.transactionPrice) && t.transactionPrice > 0 ? formatCurrency(t.transactionPrice) : "N/A",
     ];
     cells.forEach((val, i) => {
       const c = document.createElement("div");
       c.textContent = val;
-      if (i === 2 && acquired !== null) c.className = acquired ? "positive" : "negative";
+      if ((i === 2 || i === 3) && acquired !== null) c.className = acquired ? "positive" : "negative";
       row.appendChild(c);
     });
     table.appendChild(row);
