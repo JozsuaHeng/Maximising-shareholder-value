@@ -93,6 +93,7 @@ const homeState = {
   quotes: {}, // ranking-universe symbol -> { symbol, name, quote }
   rankingLoaded: false,
   cryptoLoaded: false,
+  marketTickers: {}, // symbol -> quote, from MARKET_TICKERS — read by worldMarkets.js too
 };
 
 const homeTabsEl = document.getElementById("homeTabs");
@@ -101,12 +102,16 @@ const homeViewToggleEl = document.getElementById("homeViewToggle");
 const homeNewsListEl = document.getElementById("homeNewsList");
 const indexStripEl = document.getElementById("indexStrip");
 const recentlyViewedRowEl = document.getElementById("recentlyViewedRow");
+const marketBreadthEl = document.getElementById("marketBreadth");
 
-// A small, fixed set of index proxies — 4 quote calls, once per homepage
-// visit, cached for the session. Deliberately NOT tied to any tab (always
-// visible) since a "what's the market doing right now" strip is exactly
-// the kind of thing Yahoo Finance-style pages lead with.
-const INDEX_STRIP_SYMBOLS = [
+// One shared ticker list feeds BOTH the sidebar list AND the world map's
+// per-exchange markers (worldMarkets.js reads homeState.marketTickers by
+// symbol) — one fetch pass serves two UI surfaces instead of paying for
+// the same data twice. Country ETFs stand in for each exchange's real
+// index since Finnhub's free tier doesn't offer live foreign indices
+// (same reasoning as the original US-index proxies) — 20 quote calls,
+// once per homepage visit, cached 30s at the edge.
+const MARKET_TICKERS = [
   ["SPY", "S&P 500"],
   ["QQQ", "Nasdaq 100"],
   ["DIA", "Dow Jones"],
@@ -115,6 +120,18 @@ const INDEX_STRIP_SYMBOLS = [
   ["USO", "Oil"],
   ["EFA", "Developed Mkts"],
   ["EEM", "Emerging Mkts"],
+  ["EWC", "Canada"],
+  ["EWZ", "Brazil"],
+  ["EWU", "United Kingdom"],
+  ["EWQ", "France"],
+  ["EWG", "Germany"],
+  ["EZA", "South Africa"],
+  ["INDA", "India"],
+  ["EWS", "Singapore"],
+  ["MCHI", "China"],
+  ["EWH", "Hong Kong"],
+  ["EWJ", "Japan"],
+  ["EWA", "Australia"],
 ];
 
 function initHome() {
@@ -122,16 +139,16 @@ function initHome() {
   buildViewToggle();
   switchTab(homeState.activeTab);
   loadMarketNews();
-  loadIndexStrip();
+  loadMarketTickers();
   renderRecentlyViewed();
 }
 
-async function loadIndexStrip() {
-  indexStripEl.innerHTML = INDEX_STRIP_SYMBOLS.map(([symbol, name]) =>
+async function loadMarketTickers() {
+  indexStripEl.innerHTML = MARKET_TICKERS.map(([symbol, name]) =>
     `<div class="index-chip" data-symbol="${symbol}"><span class="index-chip-name">${name}</span><span class="index-chip-value muted">···</span></div>`
   ).join("");
 
-  const results = await Promise.all(INDEX_STRIP_SYMBOLS.map(async ([symbol]) => {
+  const results = await Promise.all(MARKET_TICKERS.map(async ([symbol]) => {
     try {
       const q = await fetchJSON(finnhubUrl("/quote", { symbol }));
       return isNum(q.c) && q.c !== 0 ? { symbol, quote: q } : null;
@@ -142,6 +159,7 @@ async function loadIndexStrip() {
 
   results.forEach(r => {
     if (!r) return;
+    homeState.marketTickers[r.symbol] = r.quote;
     const chip = indexStripEl.querySelector(`.index-chip[data-symbol="${r.symbol}"] .index-chip-value`);
     if (!chip) return;
     const dp = r.quote.dp ?? 0;
@@ -153,6 +171,43 @@ async function loadIndexStrip() {
   Array.from(indexStripEl.children).forEach(chip => {
     chip.addEventListener("click", () => loadTicker(chip.dataset.symbol));
   });
+
+  // Re-draw the map's markers now that ticker data is available (they
+  // render once immediately on page load, before this fetch resolves, so
+  // they start out price-less and fill in here) — and render the market
+  // breadth strip, which depends on this same data.
+  if (typeof renderWorldMarkets === "function") renderWorldMarkets();
+  renderMarketBreadth(results.filter(Boolean));
+}
+
+// Zero extra API cost — reuses the same 20 quotes already fetched above.
+// A quick "how's the world doing today" pulse using data that's fetched
+// unconditionally anyway (unlike the ranking-tab universe, which stays
+// lazy on purpose).
+function renderMarketBreadth(results) {
+  if (!marketBreadthEl) return;
+  if (results.length === 0) { marketBreadthEl.innerHTML = ""; return; }
+
+  const up = results.filter(r => (r.quote.dp ?? 0) > 0).length;
+  const down = results.filter(r => (r.quote.dp ?? 0) < 0).length;
+  const flat = results.length - up - down;
+  const upPct = (up / results.length) * 100;
+
+  const sorted = [...results].sort((a, b) => (b.quote.dp ?? 0) - (a.quote.dp ?? 0));
+  const best = sorted[0];
+  const worst = sorted[sorted.length - 1];
+  const bestName = MARKET_TICKERS.find(([s]) => s === best.symbol)?.[1] || best.symbol;
+  const worstName = MARKET_TICKERS.find(([s]) => s === worst.symbol)?.[1] || worst.symbol;
+
+  marketBreadthEl.innerHTML = `
+    <div class="market-breadth-bar" title="${up} up · ${down} down · ${flat} flat, out of ${results.length} tracked global tickers">
+      <div class="market-breadth-fill" style="width:${upPct}%"></div>
+    </div>
+    <div class="market-breadth-stats">
+      <span><strong class="positive">${up}</strong> up · <strong class="negative">${down}</strong> down <span class="muted">(of ${results.length} tracked)</span></span>
+      <span class="muted">Best: <strong class="positive">${bestName} ${(best.quote.dp ?? 0) >= 0 ? "+" : ""}${(best.quote.dp ?? 0).toFixed(1)}%</strong> · Worst: <strong class="negative">${worstName} ${(worst.quote.dp ?? 0).toFixed(1)}%</strong></span>
+    </div>
+  `;
 }
 
 // Zero API cost — reads what script.js already saved to localStorage
