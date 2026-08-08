@@ -992,8 +992,8 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
    style from an external stylesheet. */
 .country-market-open { fill: color-mix(in srgb, var(--positive) 38%, var(--map-land)) !important; }
 
-.exchange-marker { cursor: pointer; }
-.exchange-dot { stroke: var(--bg-surface); stroke-width: 1.6; }
+.exchange-marker { pointer-events: none; }
+.exchange-dot { stroke: var(--bg-surface); stroke-width: 2; }
 .exchange-dot-open { fill: var(--positive); }
 .exchange-dot-closed { fill: var(--text-muted); }
 .exchange-pulse {
@@ -1007,16 +1007,21 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
   0% { transform: scale(1); opacity: 0.5; }
   100% { transform: scale(3); opacity: 0; }
 }
-.exchange-label { font-size: 34px; fill: var(--text-primary); font-weight: 700; pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 5px; stroke-linejoin: round; }
-.exchange-ticker-label { font-size: 23px; font-weight: 800; pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 4.5px; stroke-linejoin: round; }
-.exchange-ticker-label.positive { fill: var(--positive); }
-.exchange-ticker-label.negative { fill: var(--negative); }
-.exchange-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
-.exchange-marker:hover .exchange-tooltip { opacity: 1; }
-.exchange-tooltip rect { fill: var(--bg-surface); stroke: var(--border); stroke-width: 1.5; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35)); }
-.exchange-tooltip-name { font-size: 26px; fill: var(--text-primary); font-weight: 700; }
-.exchange-tooltip-status { font-size: 23px; fill: var(--text-muted); }
-.exchange-tooltip-status.positive { fill: var(--positive); }
+
+.exchange-leader { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 7 6; opacity: 0.75; }
+
+.exchange-box-rect {
+  fill: color-mix(in srgb, var(--bg-page) 88%, transparent);
+  stroke: var(--border);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4));
+}
+.exchange-box-title { font-size: 21px; font-weight: 700; fill: var(--text-primary); }
+.exchange-box-time { font-size: 15px; fill: var(--text-muted); }
+.exchange-box-price { font-size: 19px; font-weight: 700; fill: var(--text-secondary); }
+.exchange-box-pct { font-size: 19px; font-weight: 800; }
+.exchange-box-pct.positive { fill: var(--positive); }
+.exchange-box-pct.negative { fill: var(--negative); }
 
 /* ---- Home Market status card (ticker deep-dive right column) ---- */
 .home-market-status { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 4px; }
