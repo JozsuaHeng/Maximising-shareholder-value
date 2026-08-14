@@ -1011,15 +1011,15 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
 .exchange-leader { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 7 6; opacity: 0.75; }
 
 .exchange-box-rect {
-  fill: color-mix(in srgb, var(--bg-page) 88%, transparent);
+  fill: color-mix(in srgb, var(--bg-page) 62%, transparent);
   stroke: var(--border);
   stroke-width: 1.2;
   filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4));
 }
-.exchange-box-title { font-size: 21px; font-weight: 700; fill: var(--text-primary); }
-.exchange-box-time { font-size: 15px; fill: var(--text-muted); }
-.exchange-box-price { font-size: 19px; font-weight: 700; fill: var(--text-secondary); }
-.exchange-box-pct { font-size: 19px; font-weight: 800; }
+.exchange-box-title { font-size: 30px; font-weight: 700; fill: var(--text-primary); }
+.exchange-box-time { font-size: 20px; fill: var(--text-muted); }
+.exchange-box-price { font-size: 26px; font-weight: 700; fill: var(--text-secondary); }
+.exchange-box-pct { font-size: 26px; font-weight: 800; }
 .exchange-box-pct.positive { fill: var(--positive); }
 .exchange-box-pct.negative { fill: var(--negative); }
 

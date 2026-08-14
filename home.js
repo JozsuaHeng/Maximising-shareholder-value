@@ -132,6 +132,16 @@ const MARKET_TICKERS = [
   ["EWH", "Hong Kong"],
   ["EWJ", "Japan"],
   ["EWA", "Australia"],
+  ["EWY", "South Korea"],
+  ["EWT", "Taiwan"],
+  ["EWW", "Mexico"],
+  ["EWL", "Switzerland"],
+  ["EWN", "Netherlands"],
+  ["EWP", "Spain"],
+  ["EWI", "Italy"],
+  ["EIDO", "Indonesia"],
+  ["SLV", "Silver"],
+  ["UNG", "Natural Gas"],
 ];
 
 function initHome() {

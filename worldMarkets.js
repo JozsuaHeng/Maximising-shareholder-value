@@ -39,19 +39,19 @@
 // once via a one-off script, then boxes placed by hand from there — see
 // git history around 2026-08-08 if these ever need re-deriving).
 const EXCHANGES = [
-  { code: "NYSE", name: "NYSE / Nasdaq", ticker: "SPY", flag: "🇺🇸", city: "New York", country: "US", tz: "America/New_York", open: "09:30", close: "16:00", lat: 40.71, lon: -74.01, boxX: 1060, boxY: 460 },
-  { code: "TSX", name: "Toronto Stock Exchange", ticker: "EWC", flag: "🇨🇦", city: "Toronto", country: "CA", tz: "America/Toronto", open: "09:30", close: "16:00", lat: 43.65, lon: -79.38, boxX: 1060, boxY: 300 },
-  { code: "B3", name: "B3", ticker: "EWZ", flag: "🇧🇷", city: "São Paulo", country: "BR", tz: "America/Sao_Paulo", open: "10:00", close: "17:00", lat: -23.55, lon: -46.63, boxX: 1300, boxY: 1010 },
-  { code: "LSE", name: "London Stock Exchange", ticker: "EWU", flag: "🇬🇧", city: "London", country: "GB", tz: "Europe/London", open: "08:00", close: "16:30", lat: 51.51, lon: -0.13, boxX: 1080, boxY: 140 },
-  { code: "EPA", name: "Euronext Paris", ticker: "EWQ", flag: "🇫🇷", city: "Paris", country: "FR", tz: "Europe/Paris", open: "09:00", close: "17:30", lat: 48.86, lon: 2.35, boxX: 1690, boxY: 175 },
-  { code: "FRA", name: "Deutsche Börse (Xetra)", ticker: "EWG", flag: "🇩🇪", city: "Frankfurt", country: "DE", tz: "Europe/Berlin", open: "09:00", close: "17:30", lat: 50.11, lon: 8.68, boxX: 1690, boxY: 320 },
-  { code: "JSE", name: "Johannesburg Stock Exchange", ticker: "EZA", flag: "🇿🇦", city: "Johannesburg", country: "ZA", tz: "Africa/Johannesburg", open: "09:00", close: "17:00", lat: -26.20, lon: 28.05, boxX: 1860, boxY: 1060 },
-  { code: "NSE", name: "National Stock Exchange", ticker: "INDA", flag: "🇮🇳", city: "Mumbai", country: "IN", tz: "Asia/Kolkata", open: "09:15", close: "15:30", lat: 19.08, lon: 72.88, boxX: 2470, boxY: 870 },
-  { code: "SGX", name: "Singapore Exchange", ticker: "EWS", flag: "🇸🇬", city: "Singapore", country: "SG", tz: "Asia/Singapore", open: "09:00", close: "17:00", lat: 1.35, lon: 103.82, boxX: 2470, boxY: 720 },
-  { code: "SSE", name: "Shanghai Stock Exchange", ticker: "MCHI", flag: "🇨🇳", city: "Shanghai", country: "CN", tz: "Asia/Shanghai", open: "09:30", close: "15:00", lat: 31.23, lon: 121.47, boxX: 2470, boxY: 420 },
-  { code: "HKEX", name: "Hong Kong Exchange", ticker: "EWH", flag: "🇭🇰", city: "Hong Kong", country: "HK", mapCountry: "cn", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17, boxX: 2470, boxY: 570 },
-  { code: "TSE", name: "Tokyo Stock Exchange", ticker: "EWJ", flag: "🇯🇵", city: "Tokyo", country: "JP", tz: "Asia/Tokyo", open: "09:00", close: "15:00", lat: 35.68, lon: 139.65, boxX: 2470, boxY: 270 },
-  { code: "ASX", name: "Australian Securities Exchange", ticker: "EWA", flag: "🇦🇺", city: "Sydney", country: "AU", tz: "Australia/Sydney", open: "10:00", close: "16:00", lat: -33.87, lon: 151.21, boxX: 2540, boxY: 1160 },
+  { code: "NYSE", name: "NYSE / Nasdaq", ticker: "SPY", flag: "🇺🇸", city: "New York", country: "US", tz: "America/New_York", open: "09:30", close: "16:00", lat: 40.71, lon: -74.01, boxX: 1030, boxY: 530 },
+  { code: "TSX", name: "Toronto Stock Exchange", ticker: "EWC", flag: "🇨🇦", city: "Toronto", country: "CA", tz: "America/Toronto", open: "09:30", close: "16:00", lat: 43.65, lon: -79.38, boxX: 1030, boxY: 300 },
+  { code: "B3", name: "B3", ticker: "EWZ", flag: "🇧🇷", city: "São Paulo", country: "BR", tz: "America/Sao_Paulo", open: "10:00", close: "17:00", lat: -23.55, lon: -46.63, boxX: 1300, boxY: 1030 },
+  { code: "LSE", name: "London Stock Exchange", ticker: "EWU", flag: "🇬🇧", city: "London", country: "GB", tz: "Europe/London", open: "08:00", close: "16:30", lat: 51.51, lon: -0.13, boxX: 1050, boxY: 130 },
+  { code: "EPA", name: "Euronext Paris", ticker: "EWQ", flag: "🇫🇷", city: "Paris", country: "FR", tz: "Europe/Paris", open: "09:00", close: "17:30", lat: 48.86, lon: 2.35, boxX: 1720, boxY: 165 },
+  { code: "FRA", name: "Deutsche Börse (Xetra)", ticker: "EWG", flag: "🇩🇪", city: "Frankfurt", country: "DE", tz: "Europe/Berlin", open: "09:00", close: "17:30", lat: 50.11, lon: 8.68, boxX: 1720, boxY: 400 },
+  { code: "JSE", name: "Johannesburg Stock Exchange", ticker: "EZA", flag: "🇿🇦", city: "Johannesburg", country: "ZA", tz: "Africa/Johannesburg", open: "09:00", close: "17:00", lat: -26.20, lon: 28.05, boxX: 1880, boxY: 1080 },
+  { code: "NSE", name: "National Stock Exchange", ticker: "INDA", flag: "🇮🇳", city: "Mumbai", country: "IN", tz: "Asia/Kolkata", open: "09:15", close: "15:30", lat: 19.08, lon: 72.88, boxX: 2400, boxY: 1150 },
+  { code: "SGX", name: "Singapore Exchange", ticker: "EWS", flag: "🇸🇬", city: "Singapore", country: "SG", tz: "Asia/Singapore", open: "09:00", close: "17:00", lat: 1.35, lon: 103.82, boxX: 2400, boxY: 930 },
+  { code: "SSE", name: "Shanghai Stock Exchange", ticker: "MCHI", flag: "🇨🇳", city: "Shanghai", country: "CN", tz: "Asia/Shanghai", open: "09:30", close: "15:00", lat: 31.23, lon: 121.47, boxX: 2400, boxY: 270 },
+  { code: "HKEX", name: "Hong Kong Exchange", ticker: "EWH", flag: "🇭🇰", city: "Hong Kong", country: "HK", mapCountry: "cn", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17, boxX: 2400, boxY: 490 },
+  { code: "TSE", name: "Tokyo Stock Exchange", ticker: "EWJ", flag: "🇯🇵", city: "Tokyo", country: "JP", tz: "Asia/Tokyo", open: "09:00", close: "15:00", lat: 35.68, lon: 139.65, boxX: 2400, boxY: 710 },
+  { code: "ASX", name: "Australian Securities Exchange", ticker: "EWA", flag: "🇦🇺", city: "Sydney", country: "AU", tz: "Australia/Sydney", open: "10:00", close: "16:00", lat: -33.87, lon: 151.21, boxX: 2400, boxY: 1370 },
 ];
 
 function getExchangeStatus(ex) {
@@ -152,12 +152,12 @@ async function renderWorldMarkets() {
   // Marker geometry is sized relative to the map's own viewBox units (not
   // fixed pixels), same idea as the rest of this map — so markers stay
   // correctly proportioned regardless of the SVG's rendered size.
-  const r = vb.width * 0.0028;
+  const r = vb.width * 0.0042;
 
   let openCount = 0;
   // Callout box size, shared by every marker — viewBox-relative like
   // everything else here so it scales with the SVG's rendered size.
-  const bw = vb.width * 0.155, bh = vb.width * 0.048;
+  const bw = vb.width * 0.205, bh = vb.width * 0.066;
 
   EXCHANGES.forEach(ex => {
     const { isOpen, hhmm } = getExchangeStatus(ex);
