@@ -53,13 +53,17 @@ function fredUrl(seriesId, extraParams) {
 }
 
 // Browsable only — no quotes ever fetched for these, so length is free.
+// `accent` — a fixed decorative color per category (not theme-swapped,
+// same idea as the logo badge) purely so the zero-cost browse grid reads
+// as more distinct/designed instead of every category looking identical.
+// Not a status color (doesn't mean good/bad), just a visual identifier.
 const BROWSE_CATEGORIES = [
-  { id: "trending-tech", title: "Trending Tech", items: [["AAPL", "Apple"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["NVDA", "Nvidia"], ["META", "Meta"], ["ORCL", "Oracle"], ["ADBE", "Adobe"], ["INTC", "Intel"], ["CSCO", "Cisco"], ["UBER", "Uber"], ["ABNB", "Airbnb"]] },
-  { id: "blue-chip", title: "Blue Chip", items: [["JNJ", "Johnson & Johnson"], ["PG", "Procter & Gamble"], ["KO", "Coca-Cola"], ["JPM", "JPMorgan Chase"], ["V", "Visa"], ["WMT", "Walmart"], ["MCD", "McDonald's"], ["DIS", "Disney"], ["HD", "Home Depot"], ["UNH", "UnitedHealth"], ["COST", "Costco"], ["PEP", "PepsiCo"]] },
-  { id: "dividend-payers", title: "Dividend Payers", items: [["T", "AT&T"], ["XOM", "ExxonMobil"], ["VZ", "Verizon"], ["PFE", "Pfizer"], ["MO", "Altria"], ["IBM", "IBM"], ["CVX", "Chevron"], ["MMM", "3M"], ["KMI", "Kinder Morgan"], ["O", "Realty Income"], ["D", "Dominion Energy"], ["SO", "Southern Company"]] },
-  { id: "growth", title: "Growth", items: [["TSLA", "Tesla"], ["NFLX", "Netflix"], ["SHOP", "Shopify"], ["PLTR", "Palantir"], ["CRWD", "CrowdStrike"], ["AMD", "AMD"], ["RBLX", "Roblox"], ["DDOG", "Datadog"], ["ZS", "Zscaler"], ["NET", "Cloudflare"], ["SNOW", "Snowflake"], ["ROKU", "Roku"]] },
-  { id: "etfs", title: "ETFs", items: [["SPY", "S&P 500"], ["QQQ", "Nasdaq 100"], ["VTI", "Total Market"], ["DIA", "Dow Jones"], ["IWM", "Russell 2000"], ["VOO", "S&P 500 (Vanguard)"], ["ARKK", "ARK Innovation"], ["XLK", "Technology Sector"], ["XLF", "Financial Sector"], ["XLE", "Energy Sector"], ["EFA", "Developed Markets"], ["EEM", "Emerging Markets"]] },
-  { id: "bond-etfs", title: "Bond ETFs", items: [["TLT", "20+Y Treasury"], ["BND", "Total Bond Market"], ["AGG", "US Aggregate Bond"], ["HYG", "High Yield Corp"], ["IEF", "7-10Y Treasury"], ["LQD", "Investment Grade Corp"], ["MUB", "National Muni Bond"], ["SHY", "1-3Y Treasury"], ["VCIT", "Intermediate Corp Bond"], ["EMB", "Emerging Markets Bond"], ["JNK", "High Yield Bond"], ["BIV", "Intermediate-Term Bond"]] },
+  { id: "trending-tech", title: "Trending Tech", accent: "#6366f1", items: [["AAPL", "Apple"], ["MSFT", "Microsoft"], ["GOOGL", "Alphabet"], ["AMZN", "Amazon"], ["NVDA", "Nvidia"], ["META", "Meta"], ["ORCL", "Oracle"], ["ADBE", "Adobe"], ["INTC", "Intel"], ["CSCO", "Cisco"], ["UBER", "Uber"], ["ABNB", "Airbnb"]] },
+  { id: "blue-chip", title: "Blue Chip", accent: "#0ea5e9", items: [["JNJ", "Johnson & Johnson"], ["PG", "Procter & Gamble"], ["KO", "Coca-Cola"], ["JPM", "JPMorgan Chase"], ["V", "Visa"], ["WMT", "Walmart"], ["MCD", "McDonald's"], ["DIS", "Disney"], ["HD", "Home Depot"], ["UNH", "UnitedHealth"], ["COST", "Costco"], ["PEP", "PepsiCo"]] },
+  { id: "dividend-payers", title: "Dividend Payers", accent: "#f59e0b", items: [["T", "AT&T"], ["XOM", "ExxonMobil"], ["VZ", "Verizon"], ["PFE", "Pfizer"], ["MO", "Altria"], ["IBM", "IBM"], ["CVX", "Chevron"], ["MMM", "3M"], ["KMI", "Kinder Morgan"], ["O", "Realty Income"], ["D", "Dominion Energy"], ["SO", "Southern Company"]] },
+  { id: "growth", title: "Growth", accent: "#ec4899", items: [["TSLA", "Tesla"], ["NFLX", "Netflix"], ["SHOP", "Shopify"], ["PLTR", "Palantir"], ["CRWD", "CrowdStrike"], ["AMD", "AMD"], ["RBLX", "Roblox"], ["DDOG", "Datadog"], ["ZS", "Zscaler"], ["NET", "Cloudflare"], ["SNOW", "Snowflake"], ["ROKU", "Roku"]] },
+  { id: "etfs", title: "ETFs", accent: "#14b8a6", items: [["SPY", "S&P 500"], ["QQQ", "Nasdaq 100"], ["VTI", "Total Market"], ["DIA", "Dow Jones"], ["IWM", "Russell 2000"], ["VOO", "S&P 500 (Vanguard)"], ["ARKK", "ARK Innovation"], ["XLK", "Technology Sector"], ["XLF", "Financial Sector"], ["XLE", "Energy Sector"], ["EFA", "Developed Markets"], ["EEM", "Emerging Markets"]] },
+  { id: "bond-etfs", title: "Bond ETFs", accent: "#8b5cf6", items: [["TLT", "20+Y Treasury"], ["BND", "Total Bond Market"], ["AGG", "US Aggregate Bond"], ["HYG", "High Yield Corp"], ["IEF", "7-10Y Treasury"], ["LQD", "Investment Grade Corp"], ["MUB", "National Muni Bond"], ["SHY", "1-3Y Treasury"], ["VCIT", "Intermediate Corp Bond"], ["EMB", "Emerging Markets Bond"], ["JNK", "High Yield Bond"], ["BIV", "Intermediate-Term Bond"]] },
 ];
 
 // Small, curated universe used ONLY to rank Winners/Losers/Most Active —
@@ -311,7 +315,7 @@ function renderBrowseCategory(tabId) {
   const cat = BROWSE_CATEGORIES.find(c => c.id === tabId);
   homeContentEl.innerHTML = "";
   if (!cat) return;
-  homeContentEl.appendChild(buildSimpleGrid(cat.items));
+  homeContentEl.appendChild(buildSimpleGrid(cat.items, cat.accent));
 }
 
 async function ensureRankingLoaded() {
@@ -465,13 +469,14 @@ function buildCryptoTable(items) {
 }
 
 // Name + ticker only — no quote, no fetch. Used for the browse categories.
-function buildSimpleGrid(items) {
+function buildSimpleGrid(items, accent) {
   const row = document.createElement("div");
   row.className = "home-chip-row home-chip-row-tab";
   items.forEach(([symbol, name]) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "home-chip home-chip-simple";
+    if (accent) chip.style.setProperty("--chip-accent", accent);
     chip.innerHTML = `
       <span class="home-chip-name">${name}</span>
       <span class="home-chip-symbol">${displaySymbol(symbol)}</span>
@@ -540,6 +545,13 @@ const MACRO_SERIES = [
   { id: "CPIAUCSL", label: "Inflation (CPI, YoY)", unit: "%", params: { units: "pc1" } },
   { id: "UNRATE", label: "Unemployment Rate", unit: "%", params: {} },
   { id: "DGS10", label: "10-Year Treasury Yield", unit: "%", params: {} },
+  // Added 2026-08-27 — same FRED key, only fetched when this tab is
+  // opened (already lazy), so more indicators here don't add any
+  // always-on cost, just more content when someone actually visits.
+  { id: "MORTGAGE30US", label: "30-Year Mortgage Rate", unit: "%", params: {} },
+  { id: "M2SL", label: "M2 Money Supply (YoY)", unit: "%", params: { units: "pc1" } },
+  { id: "UMCSENT", label: "Consumer Sentiment", unit: "", params: {} },
+  { id: "DCOILWTICO", label: "Crude Oil (WTI)", unit: "", prefix: "$", params: {} },
 ];
 
 async function renderMacroTab() {
@@ -570,7 +582,7 @@ async function renderMacroTab() {
     const value = document.createElement("div");
     value.className = "indicator-value";
     if (r.status === "fulfilled" && isNum(r.value.value)) {
-      value.textContent = `${r.value.value.toFixed(2)}${series.unit}`;
+      value.textContent = `${series.prefix || ""}${r.value.value.toFixed(2)}${series.unit}`;
       const dateNote = document.createElement("div");
       dateNote.className = "macro-date";
       dateNote.textContent = `As of ${r.value.date}`;
