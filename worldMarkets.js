@@ -177,7 +177,7 @@ async function renderWorldMarkets() {
   const bw = vb.width * 0.205, bh = vb.width * 0.066;
 
   EXCHANGES.forEach(ex => {
-    const { isOpen, hhmm } = getExchangeStatus(ex);
+    const { isOpen } = getExchangeStatus(ex);
     if (isOpen) openCount++;
     const x = lonToX(ex.lon), y = latToY(ex.lat);
     const tickerQuote = (typeof homeState !== "undefined" && homeState.marketTickers) ? homeState.marketTickers[ex.ticker] : null;
@@ -210,49 +210,29 @@ async function renderWorldMarkets() {
     leader.setAttribute("x2", ex.boxX); leader.setAttribute("y2", ex.boxY);
     g.appendChild(leader);
 
-    // Callout box — flag + city + ticker code on top, price/%/local time
-    // below. Always visible (not hover-only), same visual language as
-    // the reference: a dark card pinned to each market via a leader line.
-    const boxLeft = ex.boxX - bw / 2, boxTop = ex.boxY - bh / 2;
-    const boxGroup = document.createElementNS(svgNS, "g");
-    boxGroup.setAttribute("class", "exchange-box");
-    boxGroup.setAttribute("transform", `translate(${boxLeft}, ${boxTop})`);
-
-    const rect = document.createElementNS(svgNS, "rect");
-    rect.setAttribute("width", bw); rect.setAttribute("height", bh);
-    rect.setAttribute("rx", vb.width * 0.006);
-    rect.setAttribute("class", "exchange-box-rect");
-    boxGroup.appendChild(rect);
+    // Floating label — no card/box background, border or shadow. Just two
+    // lines of stroke-outlined text (same technique the compact city-only
+    // labels already used successfully) so it reads clearly over whatever
+    // land/ocean color happens to be underneath, without the visual weight
+    // of 13 solid rectangles competing for attention at once. Replaced the
+    // earlier dark-card design 2026-08-27 after it read as cluttered even
+    // once the grid/country-fill were removed — the boxes themselves were
+    // the remaining source of visual weight.
+    const textLeft = ex.boxX - bw / 2;
 
     const titleText = document.createElementNS(svgNS, "text");
-    titleText.setAttribute("x", bw * 0.05); titleText.setAttribute("y", bh * 0.36);
-    titleText.setAttribute("class", "exchange-box-title");
+    titleText.setAttribute("x", textLeft); titleText.setAttribute("y", ex.boxY - bh * 0.12);
+    titleText.setAttribute("class", "exchange-float-title");
     titleText.textContent = `${ex.flag} ${ex.city}`;
-    boxGroup.appendChild(titleText);
-
-    const timeText = document.createElementNS(svgNS, "text");
-    timeText.setAttribute("x", bw * 0.95); timeText.setAttribute("y", bh * 0.36);
-    timeText.setAttribute("text-anchor", "end");
-    timeText.setAttribute("class", "exchange-box-time");
-    timeText.textContent = hhmm;
-    boxGroup.appendChild(timeText);
+    g.appendChild(titleText);
 
     const priceText = document.createElementNS(svgNS, "text");
-    priceText.setAttribute("x", bw * 0.05); priceText.setAttribute("y", bh * 0.78);
-    priceText.setAttribute("class", "exchange-box-price");
-    priceText.textContent = tickerQuote ? `${ex.ticker} ${chartFormatCurrency ? chartFormatCurrency(tickerQuote.c) : `$${tickerQuote.c.toFixed(2)}`}` : `${ex.ticker} ···`;
-    boxGroup.appendChild(priceText);
+    priceText.setAttribute("x", textLeft); priceText.setAttribute("y", ex.boxY + bh * 0.3);
+    priceText.setAttribute("class", `exchange-float-price ${dp === null ? "" : dp >= 0 ? "positive" : "negative"}`);
+    const priceStr = tickerQuote ? (chartFormatCurrency ? chartFormatCurrency(tickerQuote.c) : `$${tickerQuote.c.toFixed(2)}`) : "···";
+    priceText.textContent = dp !== null ? `${ex.ticker} ${priceStr} (${dp >= 0 ? "+" : ""}${dp.toFixed(1)}%)` : `${ex.ticker} ${priceStr}`;
+    g.appendChild(priceText);
 
-    if (dp !== null) {
-      const pctText = document.createElementNS(svgNS, "text");
-      pctText.setAttribute("x", bw * 0.95); pctText.setAttribute("y", bh * 0.78);
-      pctText.setAttribute("text-anchor", "end");
-      pctText.setAttribute("class", `exchange-box-pct ${dp >= 0 ? "positive" : "negative"}`);
-      pctText.textContent = `${dp >= 0 ? "+" : ""}${dp.toFixed(2)}%`;
-      boxGroup.appendChild(pctText);
-    }
-
-    g.appendChild(boxGroup);
     markersLayer.appendChild(g);
   });
 

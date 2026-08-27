@@ -1002,18 +1002,14 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
 
 .exchange-leader { stroke: var(--text-muted); stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.45; }
 
-.exchange-box-rect {
-  fill: color-mix(in srgb, var(--bg-page) 62%, transparent);
-  stroke: var(--border);
-  stroke-width: 1.2;
-  filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4));
-}
-.exchange-box-title { font-size: 30px; font-weight: 700; fill: var(--text-primary); }
-.exchange-box-time { font-size: 20px; fill: var(--text-muted); }
-.exchange-box-price { font-size: 26px; font-weight: 700; fill: var(--text-secondary); }
-.exchange-box-pct { font-size: 26px; font-weight: 800; }
-.exchange-box-pct.positive { fill: var(--positive); }
-.exchange-box-pct.negative { fill: var(--negative); }
+/* No card/box behind these — a stroke "halo" in the page's own background
+   color keeps them legible over whatever land/ocean color sits underneath,
+   the same trick .exchange-label already used for the compact city-only
+   labels, just applied everywhere now that the boxes are gone. */
+.exchange-float-title { font-size: 28px; font-weight: 700; fill: var(--text-primary); pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 5px; stroke-linejoin: round; }
+.exchange-float-price { font-size: 22px; font-weight: 700; fill: var(--text-secondary); pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 4.5px; stroke-linejoin: round; }
+.exchange-float-price.positive { fill: var(--positive); }
+.exchange-float-price.negative { fill: var(--negative); }
 
 /* ---- Home Market status card (ticker deep-dive right column) ---- */
 .home-market-status { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 4px; }
