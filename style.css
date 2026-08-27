@@ -1011,8 +1011,23 @@ canvas#priceChart, canvas#volumeChart, canvas#rsiChart, canvas#macdChart { width
    color keeps them legible over whatever land/ocean color sits underneath,
    the same trick .exchange-label already used for the compact city-only
    labels, just applied everywhere now that the boxes are gone. */
-.exchange-float-title { font-size: 28px; font-weight: 700; fill: var(--text-primary); pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 5px; stroke-linejoin: round; }
-.exchange-float-price { font-size: 22px; font-weight: 700; fill: var(--text-secondary); pointer-events: none; paint-order: stroke; stroke: var(--bg-surface); stroke-width: 4.5px; stroke-linejoin: round; }
+/* Drop-shadow instead of a stroke outline — a thick stroke on dense text
+   (the previous approach) merges adjacent letters into a blobby shape
+   that reads as "a box" even with no rect element, and doesn't scale well
+   at the ~0.33x this SVG typically renders at (viewBox ~2752 units wide
+   vs. a ~900px rendered map). Sized up substantially for the same
+   reason — the old 28px/22px viewBox units worked out to roughly 9px/7px
+   on an actual screen, genuinely too small to read. A soft shadow is how
+   real map labels (Google Maps, print atlases) get contrast against a
+   busy background without this merging problem. */
+.exchange-float-title {
+  font-size: 46px; font-weight: 800; fill: var(--text-primary); pointer-events: none;
+  filter: drop-shadow(0 0 5px var(--bg-page)) drop-shadow(0 0 5px var(--bg-page)) drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.exchange-float-price {
+  font-size: 36px; font-weight: 700; fill: var(--text-secondary); pointer-events: none;
+  filter: drop-shadow(0 0 4px var(--bg-page)) drop-shadow(0 0 4px var(--bg-page)) drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
 .exchange-float-price.positive { fill: var(--positive); }
 .exchange-float-price.negative { fill: var(--negative); }
 
