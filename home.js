@@ -132,17 +132,17 @@ const MARKET_TICKERS = [
   ["EWH", "Hong Kong"],
   ["EWJ", "Japan"],
   ["EWA", "Australia"],
-  ["EWY", "South Korea"],
-  ["EWT", "Taiwan"],
-  ["EWW", "Mexico"],
-  ["EWL", "Switzerland"],
-  ["EWN", "Netherlands"],
-  ["EWP", "Spain"],
-  ["EWI", "Italy"],
-  ["EIDO", "Indonesia"],
-  ["SLV", "Silver"],
-  ["UNG", "Natural Gas"],
 ];
+// 2026-08-14 added 10 more (South Korea/Taiwan/Mexico/Switzerland/
+// Netherlands/Spain/Italy/Indonesia/Silver/Natural Gas) to "fill up" this
+// list; reverted 2026-08-27 — the taller sidebar stretched the map's flex
+// row height, and since the SVG uses preserveAspectRatio to hold its own
+// aspect ratio, the extra container height just became a visible empty
+// gap below the actual map graphic rather than more visible content. Back
+// to 20 so the sidebar roughly matches the map's natural height. If more
+// tickers are wanted again, they need a layout change (e.g. a 3rd column,
+// or letting the sidebar scroll independently) to avoid reintroducing the
+// gap, not just appending to this array.
 
 function initHome() {
   buildTabs();
@@ -209,6 +209,12 @@ function renderMarketBreadth(results) {
   const bestName = MARKET_TICKERS.find(([s]) => s === best.symbol)?.[1] || best.symbol;
   const worstName = MARKET_TICKERS.find(([s]) => s === worst.symbol)?.[1] || worst.symbol;
 
+  let nextEventHtml = "";
+  if (typeof getNextMarketEvent === "function") {
+    const next = getNextMarketEvent();
+    nextEventHtml = `<span class="muted">Next: <strong>${next.ex.city} ${next.label}</strong> in ${formatDuration(next.diffMin)}</span>`;
+  }
+
   marketBreadthEl.innerHTML = `
     <div class="market-breadth-bar" title="${up} up · ${down} down · ${flat} flat, out of ${results.length} tracked global tickers">
       <div class="market-breadth-fill" style="width:${upPct}%"></div>
@@ -216,6 +222,7 @@ function renderMarketBreadth(results) {
     <div class="market-breadth-stats">
       <span><strong class="positive">${up}</strong> up · <strong class="negative">${down}</strong> down <span class="muted">(of ${results.length} tracked)</span></span>
       <span class="muted">Best: <strong class="positive">${bestName} ${(best.quote.dp ?? 0) >= 0 ? "+" : ""}${(best.quote.dp ?? 0).toFixed(1)}%</strong> · Worst: <strong class="negative">${worstName} ${(worst.quote.dp ?? 0).toFixed(1)}%</strong></span>
+      ${nextEventHtml}
     </div>
   `;
 }

@@ -20,11 +20,6 @@
 // means "within normal hours on a weekday," not a guarantee it's not a
 // holiday closure today.
 
-// `mapCountry` overrides `country` only for finding which landmass to
-// highlight on the map — Hong Kong isn't a separate polygon in this map
-// file (it's folded into China's), so HKEX highlights China's outline
-// instead. `country` itself (used for the deep-dive page's Home Market
-// card, matched against Finnhub's real profile2.country) stays accurate.
 // `ticker` — a country ETF standing in for each exchange's real index
 // (same reasoning as the homepage's other index proxies: Finnhub's free
 // tier has no live foreign index data — these are NOT the literal NIKKEI/
@@ -49,7 +44,7 @@ const EXCHANGES = [
   { code: "NSE", name: "National Stock Exchange", ticker: "INDA", flag: "🇮🇳", city: "Mumbai", country: "IN", tz: "Asia/Kolkata", open: "09:15", close: "15:30", lat: 19.08, lon: 72.88, boxX: 2400, boxY: 1150 },
   { code: "SGX", name: "Singapore Exchange", ticker: "EWS", flag: "🇸🇬", city: "Singapore", country: "SG", tz: "Asia/Singapore", open: "09:00", close: "17:00", lat: 1.35, lon: 103.82, boxX: 2400, boxY: 930 },
   { code: "SSE", name: "Shanghai Stock Exchange", ticker: "MCHI", flag: "🇨🇳", city: "Shanghai", country: "CN", tz: "Asia/Shanghai", open: "09:30", close: "15:00", lat: 31.23, lon: 121.47, boxX: 2400, boxY: 270 },
-  { code: "HKEX", name: "Hong Kong Exchange", ticker: "EWH", flag: "🇭🇰", city: "Hong Kong", country: "HK", mapCountry: "cn", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17, boxX: 2400, boxY: 490 },
+  { code: "HKEX", name: "Hong Kong Exchange", ticker: "EWH", flag: "🇭🇰", city: "Hong Kong", country: "HK", tz: "Asia/Hong_Kong", open: "09:30", close: "16:00", lat: 22.32, lon: 114.17, boxX: 2400, boxY: 490 },
   { code: "TSE", name: "Tokyo Stock Exchange", ticker: "EWJ", flag: "🇯🇵", city: "Tokyo", country: "JP", tz: "Asia/Tokyo", open: "09:00", close: "15:00", lat: 35.68, lon: 139.65, boxX: 2400, boxY: 710 },
   { code: "ASX", name: "Australian Securities Exchange", ticker: "EWA", flag: "🇦🇺", city: "Sydney", country: "AU", tz: "Australia/Sydney", open: "10:00", close: "16:00", lat: -33.87, lon: 151.21, boxX: 2400, boxY: 1370 },
 ];
@@ -77,6 +72,55 @@ function getHomeMarketStatus(countryCode) {
   const ex = EXCHANGES.find(e => e.country === countryCode);
   if (!ex) return null;
   return { ex, ...getExchangeStatus(ex) };
+}
+
+// "Which market opens/closes next?" — zero extra API cost, pure client-
+// side arithmetic over the same trading-hours data the map markers
+// already use. Used by home.js's market breadth strip.
+const DAY_ORDER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const minutesOfDay = hhmm => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+
+function daysUntilNextWeekday(dayIdx) {
+  let offset = 1, idx = (dayIdx + 1) % 7;
+  while (idx === 0 || idx === 6) { offset++; idx = (idx + 1) % 7; }
+  return offset;
+}
+
+function getNextMarketEvent() {
+  const now = new Date();
+  const events = EXCHANGES.map(ex => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: ex.tz, hour: "2-digit", minute: "2-digit", hour12: false, weekday: "short",
+    }).formatToParts(now);
+    const map = {};
+    parts.forEach(p => { map[p.type] = p.value; });
+    const hhmm = `${map.hour === "24" ? "00" : map.hour}:${map.minute}`;
+    const dayIdx = DAY_ORDER.indexOf(map.weekday);
+    const isWeekday = dayIdx >= 1 && dayIdx <= 5;
+    const nowMin = minutesOfDay(hhmm);
+    const openMin = minutesOfDay(ex.open);
+    const closeMin = minutesOfDay(ex.close);
+    const isOpen = isWeekday && nowMin >= openMin && nowMin <= closeMin;
+
+    let diffMin, label;
+    if (isOpen) {
+      diffMin = closeMin - nowMin;
+      label = "closes";
+    } else {
+      label = "opens";
+      diffMin = (isWeekday && nowMin < openMin)
+        ? openMin - nowMin
+        : daysUntilNextWeekday(dayIdx) * 1440 - nowMin + openMin;
+    }
+    return { ex, label, diffMin };
+  });
+  events.sort((a, b) => a.diffMin - b.diffMin);
+  return events[0];
+}
+
+function formatDuration(mins) {
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return h === 0 ? `${m}m` : `${h}h ${m}m`;
 }
 
 let worldMapSvgRoot = null; // cached after the first fetch+inject
@@ -107,42 +151,15 @@ async function renderWorldMarkets() {
   const lonToX = lon => (lon + 180) / 360 * vb.width;
   const latToY = lat => (90 - lat) / 180 * vb.height;
 
-  // Subtle lon/lat graticule — built once (it never changes) and drawn on
-  // top of the land/ocean paths but under the markers, same convention as
-  // most reference-line map overlays.
-  if (!worldMapSvgRoot.querySelector("#worldMapGridLayer")) {
-    const gridLayer = document.createElementNS(svgNS, "g");
-    gridLayer.setAttribute("id", "worldMapGridLayer");
-    gridLayer.setAttribute("class", "world-map-grid");
-    for (let lon = -180; lon <= 180; lon += 30) {
-      const line = document.createElementNS(svgNS, "line");
-      const x = lonToX(lon);
-      line.setAttribute("x1", x); line.setAttribute("x2", x);
-      line.setAttribute("y1", 0); line.setAttribute("y2", vb.height);
-      gridLayer.appendChild(line);
-    }
-    for (let lat = -60; lat <= 90; lat += 30) {
-      const line = document.createElementNS(svgNS, "line");
-      const y = latToY(lat);
-      line.setAttribute("x1", 0); line.setAttribute("x2", vb.width);
-      line.setAttribute("y1", y); line.setAttribute("y2", y);
-      gridLayer.appendChild(line);
-    }
-    worldMapSvgRoot.appendChild(gridLayer);
-  }
-
-  // Highlight the landmass of any country whose exchange is open right
-  // now. Country paths carry a "land <iso2>" class (a few also/only carry
-  // a matching id — worldmap.svg isn't perfectly consistent), so match on
-  // both. Cleared and rebuilt every render since open/closed changes over
-  // time.
+  // Removed 2026-08-27: a lon/lat grid overlay and a whole-country-landmass
+  // fill for open exchanges (both added 2026-08-08). With 7-8 of 13
+  // exchanges open at once, the fills painted huge chunks of the map green
+  // simultaneously, and combined with the grid lines, 13 dense callout
+  // boxes, and dashed leader lines, the whole thing read as cluttered
+  // rather than informative. The open-market pulse ring on each dot
+  // already signals "this one's open" without painting the whole country
+  // — keeping just that is enough signal with far less visual weight.
   worldMapSvgRoot.querySelectorAll(".country-market-open").forEach(el => el.classList.remove("country-market-open"));
-  const highlightCountry = code => {
-    if (!code) return;
-    const c = code.toLowerCase();
-    worldMapSvgRoot.querySelectorAll(`.land.${c}`).forEach(el => el.classList.add("country-market-open"));
-    worldMapSvgRoot.querySelectorAll(`[id="${c}"]`).forEach(el => el.classList.add("country-market-open"));
-  };
 
   let markersLayer = worldMapSvgRoot.querySelector("#exchangeMarkersLayer");
   if (markersLayer) markersLayer.remove();
@@ -161,7 +178,7 @@ async function renderWorldMarkets() {
 
   EXCHANGES.forEach(ex => {
     const { isOpen, hhmm } = getExchangeStatus(ex);
-    if (isOpen) { openCount++; highlightCountry(ex.mapCountry || ex.country); }
+    if (isOpen) openCount++;
     const x = lonToX(ex.lon), y = latToY(ex.lat);
     const tickerQuote = (typeof homeState !== "undefined" && homeState.marketTickers) ? homeState.marketTickers[ex.ticker] : null;
     const dp = tickerQuote ? (tickerQuote.dp ?? 0) : null;
