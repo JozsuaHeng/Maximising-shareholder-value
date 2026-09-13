@@ -123,6 +123,59 @@ const tooltipClose = document.getElementById("tooltipClose");
 let currentIndustry = null;
 let currentBucket = "default";
 
+// ---- Instrument type (stock / etf / crypto) ----
+// Companies, ETFs, and crypto need genuinely different analysis sections
+// below the chart — an ETF/crypto has no P/E, margins, or earnings, and
+// Finnhub's fundamentals endpoints confirm this by simply returning empty
+// for them (verified directly, 2026-08-28) rather than erroring. Crypto
+// symbols are unambiguous (":" in the symbol, e.g. "BINANCE:BTCUSDT").
+// ETFs use the exact same ticker format as stocks, so they're detected by
+// the live result instead: a real company's profile2 always has at least
+// a name; an ETF's comes back as an empty object.
+function getInstrumentType(symbol, profile) {
+  if (symbol.includes(":")) return "crypto";
+  if (!profile || !profile.name) return "etf";
+  return "stock";
+}
+
+// Section ids hidden for ETF/crypto — all of these come back empty from
+// Finnhub for non-company instruments (confirmed directly): no earnings,
+// no margins, no balance sheet, no dividends, no analyst coverage, no
+// peers. Kept visible for both: Momentum/Range (repurposed for crypto —
+// see renderCryptoRange), SEC Filings (ETFs really do file fund-specific
+// forms; hidden separately for crypto only, which has none).
+const NON_STOCK_HIDDEN_SECTIONS = [
+  "growthSection", "profitabilitySection", "dividendsSection",
+  "earningsSection", "financialsSection", "sharesSection",
+  "insiderSection", "peersSection", "recommendationSection",
+];
+
+function applyInstrumentTypeUI(type) {
+  const hide = type === "stock" ? [] : NON_STOCK_HIDDEN_SECTIONS;
+  NON_STOCK_HIDDEN_SECTIONS.forEach(id => {
+    document.getElementById(id)?.classList.toggle("hidden", hide.includes(id));
+  });
+  document.getElementById("filingsSection")?.classList.toggle("hidden", type === "crypto");
+  document.getElementById("momentumSection")?.classList.toggle("hidden", type === "crypto");
+
+  const valuationTitle = document.getElementById("valuationTitle");
+  const healthTitle = document.getElementById("healthTitle");
+  const rangeTitle = document.getElementById("rangeTitle");
+  if (type === "stock") {
+    valuationTitle.textContent = "Valuation";
+    healthTitle.textContent = "Financial Health";
+    rangeTitle.firstChild.textContent = "52-Week Range ";
+  } else if (type === "etf") {
+    valuationTitle.textContent = "Price Performance";
+    healthTitle.textContent = "Trading Activity & Risk";
+    rangeTitle.firstChild.textContent = "52-Week Range ";
+  } else if (type === "crypto") {
+    valuationTitle.textContent = "Market Stats";
+    healthTitle.textContent = "Performance";
+    rangeTitle.firstChild.textContent = "All-Time High / Low ";
+  }
+}
+
 // ---- Theme ----
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -194,6 +247,18 @@ function formatCount(value) {
   return isNum(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "N/A";
 }
 
+// Compact form for big numbers (crypto market cap, volume) — 1234567890
+// -> "$1.23B". formatCurrency's comma-grouped 2-decimal style is built
+// for share prices, not crypto-sized totals.
+function formatCompactCurrency(value) {
+  if (!isNum(value)) return "N/A";
+  const abs = Math.abs(value);
+  if (abs >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+  return formatCurrency(value);
+}
+
 // Deterministic color per string (e.g. a news source name) — same input
 // always gives the same color, picked from a fixed palette rather than
 // generated freely, so it stays visually consistent with the rest of the
@@ -247,6 +312,8 @@ async function loadTicker(symbol) {
     return;
   }
 
+  if (symbol.includes(":")) return loadCryptoTicker(symbol);
+
   const myToken = ++loadToken;
   homeView.classList.add("hidden");
   dashboard.classList.add("hidden");
@@ -270,25 +337,37 @@ async function loadTicker(symbol) {
     }
 
     const metric = metricRes.metric || {};
+    const instrumentType = getInstrumentType(symbol, profile);
     currentIndustry = profile.finnhubIndustry || null;
     currentBucket = getSectorBucket(currentIndustry);
     recordRecentlyViewed(symbol, profile.name || symbol);
 
+    applyInstrumentTypeUI(instrumentType);
     renderOverview(symbol, quote, profile);
     renderHomeMarketStatus(profile);
     renderCompanyFacts(profile);
     renderDescription(profile.name);
-    renderValuation(metric, profile);
-    renderGrowth(metric);
-    renderProfitability(metric);
-    renderHealth(metric);
-    renderDividends(metric);
+
+    if (instrumentType === "etf") {
+      renderETFPerformance(metric);
+      renderETFTradingActivity(metric);
+    } else {
+      renderValuation(metric, profile);
+      renderGrowth(metric);
+      renderProfitability(metric);
+      renderDividends(metric);
+      renderHealth(metric);
+    }
     renderMomentum(metric);
     renderRange(metric);
     renderRangeGauge(metric, quote);
     const latestRecommendation = renderRecommendation(recommendationRes);
     renderScenarios(quote, metric);
-    renderOutlook({ symbol, quote, metric, recommendation: latestRecommendation });
+    if (instrumentType === "etf") {
+      renderOutlook({ symbol, metric, type: "etf" });
+    } else {
+      renderOutlook({ symbol, quote, metric, recommendation: latestRecommendation, type: "stock" });
+    }
 
     dashboard.classList.remove("hidden");
     setStatus("");
@@ -301,6 +380,115 @@ async function loadTicker(symbol) {
     console.error(err);
     setStatus(describeFetchError(err), true);
     homeView.classList.remove("hidden");
+  }
+}
+
+// CoinGecko's full /coins/{id} response nests most fields under
+// market_data.<field>.usd — flattened here into the plain shape
+// renderCryptoMarketStats/renderCryptoPerformance/renderCryptoRange
+// expect (verified this shape directly against a live request, 2026-08-28).
+function flattenCoinGeckoDetail(detail) {
+  const md = detail && detail.market_data;
+  if (!md) return null;
+  return {
+    market_cap_rank: detail.market_cap_rank,
+    market_cap: md.market_cap?.usd,
+    total_volume: md.total_volume?.usd,
+    circulating_supply: md.circulating_supply,
+    max_supply: md.max_supply,
+    price_change_percentage_24h: md.price_change_percentage_24h,
+    price_change_percentage_7d: md.price_change_percentage_7d,
+    price_change_percentage_30d: md.price_change_percentage_30d,
+    price_change_percentage_1y: md.price_change_percentage_1y,
+    ath: md.ath?.usd,
+    ath_date: md.ath_date?.usd,
+    ath_change_percentage: md.ath_change_percentage?.usd,
+    atl: md.atl?.usd,
+    atl_date: md.atl_date?.usd,
+  };
+}
+
+// Crypto: Finnhub returns nothing beyond a bare price for these symbols
+// (confirmed directly, 2026-08-28), so this skips the normal
+// company-fundamentals fetch entirely and pulls from CoinGecko instead
+// (same source as the homepage Crypto tab) — only works for the 6 coins
+// curated there; anything else still gets a working price via Finnhub's
+// quote but no detailed stats, disclosed rather than shown as blank N/A.
+async function loadCryptoTicker(symbol) {
+  const myToken = ++loadToken;
+  homeView.classList.add("hidden");
+  dashboard.classList.add("hidden");
+  document.getElementById("compareView").classList.add("hidden");
+  setStatus(`Loading ${displaySymbol(symbol)}...`);
+
+  try {
+    const quote = await fetchJSON(finnhubUrl("/quote", { symbol }));
+    if (myToken !== loadToken) return;
+    if (!quote || quote.c === 0) {
+      setStatus(`No data found for "${symbol}". Check the ticker and try again.`, true);
+      homeView.classList.remove("hidden");
+      return;
+    }
+
+    const coingeckoId = typeof CRYPTO_COINGECKO_IDS !== "undefined" ? CRYPTO_COINGECKO_IDS[symbol] : null;
+    let coin = null;
+    if (coingeckoId) {
+      try {
+        const detail = await fetchJSON(coingeckoUrl(`/coins/${coingeckoId}`, { localization: "false", tickers: "false", community_data: "false", developer_data: "false" }));
+        coin = flattenCoinGeckoDetail(detail);
+      } catch {
+        coin = null;
+      }
+    }
+    if (myToken !== loadToken) return;
+
+    currentIndustry = null;
+    currentBucket = "default";
+    const profile = { name: symbol.split(":")[1] || symbol };
+    recordRecentlyViewed(symbol, profile.name);
+
+    applyInstrumentTypeUI("crypto");
+    renderOverview(symbol, quote, profile);
+    renderHomeMarketStatus(profile);
+    renderCompanyFacts(profile); // already self-hides with no ipo/country/weburl
+    renderDescription(null); // already has a specific "common for ETFs and crypto" message
+    renderCryptoMarketStats(coin);
+    renderCryptoPerformance(coin);
+    renderCryptoRange(coin, quote.c);
+    renderOutlook({ symbol, coin, type: "crypto" });
+    renderOwnership(); // static disclaimer, zero API cost
+    upcomingEvents.innerHTML = ""; // no earnings calendar for crypto — clear any stale stock's date
+
+    dashboard.classList.remove("hidden");
+    setStatus("");
+
+    initChart(symbol); // already shows "not supported for this format" for exotic symbols
+    initInvestCalc(symbol); // already shows "not available" for exotic symbols
+    loadCryptoNews(myToken);
+  } catch (err) {
+    if (myToken !== loadToken) return;
+    console.error(err);
+    setStatus(describeFetchError(err), true);
+    homeView.classList.remove("hidden");
+  }
+}
+
+// Deliberately NOT loadSecondaryData() — that fires 7 Finnhub calls
+// (earnings/financials/filings/insider/peers/etc.) that are all
+// guaranteed empty for a crypto symbol (confirmed directly), wasting
+// rate-limit quota on calls we already know the answer to. Finnhub's
+// general crypto news category is a much better fit than company-news
+// (which is keyed off a ticker symbol crypto doesn't really have) — one
+// call, actually relevant content instead of an empty list.
+async function loadCryptoNews(myToken) {
+  newsContent.innerHTML = '<p class="muted">Loading...</p>';
+  try {
+    const newsRes = await fetchJSON(finnhubUrl("/news", { category: "crypto" }));
+    if (myToken !== loadToken) return;
+    renderNews(newsRes, newsContent);
+  } catch {
+    if (myToken !== loadToken) return;
+    newsContent.innerHTML = '<p class="muted">Couldn\'t load crypto news right now.</p>';
   }
 }
 
@@ -660,21 +848,133 @@ function renderRange(metric) {
   items.forEach(([label, value, defKey, isPercent]) => rangeGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
 }
 
-function renderRangeGauge(metric, quote) {
-  const high = metric["52WeekHigh"];
-  const low = metric["52WeekLow"];
-  const price = quote.c;
-
+// Shared by the stock/ETF 52-week gauge and the crypto all-time-high/low
+// gauge below — same visualization (where does the current price sit
+// between a low and a high reference point), fed different reference
+// points depending on instrument type.
+function renderRangeGaugeGeneric(low, high, price) {
   if (!isNum(high) || !isNum(low) || !isNum(price) || high <= low) {
     rangeGaugeWrap.classList.add("hidden");
     return;
   }
-
   rangeGaugeWrap.classList.remove("hidden");
   const pct = Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100));
   rangeGaugeMarker.style.left = `${pct}%`;
   rangeLowLabel.textContent = formatCurrency(low);
   rangeHighLabel.textContent = formatCurrency(high);
+}
+
+function renderRangeGauge(metric, quote) {
+  renderRangeGaugeGeneric(metric["52WeekLow"], metric["52WeekHigh"], quote.c);
+}
+
+// ---- ETF-specific sections (Price Performance / Trading Activity & Risk) ----
+// Repurposes the same valuationGrid/healthGrid containers a stock uses,
+// with metrics that actually exist for a fund — see getInstrumentType()
+// for why (Finnhub's fundamentals endpoints come back empty for ETFs).
+function renderETFPerformance(metric) {
+  valuationGrid.innerHTML = "";
+  const items = [
+    ["5-Day Return", metric["5DayPriceReturnDaily"], "return5Day", true],
+    ["Month-to-Date Return", metric.monthToDatePriceReturnDaily, "returnMTD", true],
+    ["13-Week Return", metric["13WeekPriceReturnDaily"], "return13Week", true],
+    ["26-Week Return", metric["26WeekPriceReturnDaily"], "return26Week", true],
+    ["YTD Return", metric.yearToDatePriceReturnDaily, "ytdReturn", true],
+    ["52-Week Return", metric["52WeekPriceReturnDaily"], "week52Return", true],
+  ];
+  items.forEach(([label, value, defKey, isPercent]) => valuationGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const week52 = metric["52WeekPriceReturnDaily"];
+  renderRealLifeExample("valuationExample", [
+    isNum(week52) && `$100 invested in this fund a year ago would be worth about <strong>$${(100 * (1 + week52 / 100)).toFixed(2)}</strong> today, based on its ${week52 >= 0 ? "+" : ""}${week52.toFixed(1)}% return over the past 12 months (not counting any dividends it paid out along the way).`,
+  ]);
+}
+
+function renderETFTradingActivity(metric) {
+  healthGrid.innerHTML = "";
+  const items = [
+    ["Beta", metric.beta, "beta", false],
+    ["3-Month Volatility", metric["3MonthADReturnStd"], "volatility3Month", false],
+    ["Avg Volume (10-Day, M)", metric["10DayAverageTradingVolume"], "avgVolume10Day", false],
+    ["Avg Volume (3-Month, M)", metric["3MonthAverageTradingVolume"], "avgVolume3Month", false],
+  ];
+  items.forEach(([label, value, defKey, isPercent]) => healthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const beta = metric.beta;
+  renderRealLifeExample("healthExample", [
+    isNum(beta) && beta !== 1 && `If the overall market moved 10% (up or down), this fund has historically moved about <strong>${(beta * 10).toFixed(1)}%</strong> — that's what a beta of ${beta.toFixed(2)} means in practice.`,
+  ]);
+}
+
+// ---- Crypto-specific sections (Market Stats / Performance) ----
+// `coin` is CoinGecko's per-coin object (same shape the homepage Crypto
+// tab uses) — Finnhub returns nothing usable for crypto beyond price.
+function renderCryptoMarketStats(coin) {
+  valuationGrid.innerHTML = "";
+  if (!coin) { valuationGrid.innerHTML = '<p class="muted">Detailed crypto data isn\'t available for this coin.</p>'; return; }
+  const items = [
+    ["Market Cap", coin.market_cap, "marketCap", false],
+    ["Market Cap Rank", coin.market_cap_rank, "marketCapRank", false],
+    ["24H Volume", coin.total_volume, "volume24h", false],
+    ["Circulating Supply", coin.circulating_supply, "circSupply", false],
+    ["Max Supply", coin.max_supply, "maxSupply", false],
+  ];
+  items.forEach(([label, value, defKey]) => {
+    const card = makeIndicatorCard(label, value, defKey, false);
+    if (isNum(value) && (label === "Market Cap" || label === "24H Volume")) {
+      const valueEl = card.querySelector(".indicator-value");
+      if (valueEl) valueEl.textContent = formatCompactCurrency(value);
+    } else if (isNum(value) && (label === "Circulating Supply" || label === "Max Supply")) {
+      const valueEl = card.querySelector(".indicator-value");
+      if (valueEl) valueEl.textContent = value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    } else if (isNum(value) && label === "Market Cap Rank") {
+      const valueEl = card.querySelector(".indicator-value");
+      if (valueEl) valueEl.textContent = `#${value}`;
+    }
+    valuationGrid.appendChild(card);
+  });
+
+  renderRealLifeExample("valuationExample", [
+    isNum(coin.market_cap_rank) && `By total market value, this is currently the <strong>#${coin.market_cap_rank}</strong> largest cryptocurrency out of thousands that exist.`,
+  ]);
+}
+
+function renderCryptoPerformance(coin) {
+  healthGrid.innerHTML = "";
+  if (!coin) { healthGrid.innerHTML = '<p class="muted">Detailed crypto data isn\'t available for this coin.</p>'; return; }
+  const items = [
+    ["24H Return", coin.price_change_percentage_24h, "return24h", true],
+    ["7-Day Return", coin.price_change_percentage_7d, "return7Day", true],
+    ["30-Day Return", coin.price_change_percentage_30d, "return30Day", true],
+    ["1-Year Return", coin.price_change_percentage_1y, "return1Year", true],
+  ];
+  items.forEach(([label, value, defKey, isPercent]) => healthGrid.appendChild(makeIndicatorCard(label, value, defKey, isPercent)));
+
+  const pct30d = coin.price_change_percentage_30d;
+  renderRealLifeExample("healthExample", [
+    isNum(pct30d) && `$100 put into this coin 30 days ago would be worth about <strong>$${(100 * (1 + pct30d / 100)).toFixed(2)}</strong> today, based on its ${pct30d >= 0 ? "+" : ""}${pct30d.toFixed(1)}% move over that month.`,
+  ]);
+}
+
+function renderCryptoRange(coin, price) {
+  rangeGrid.innerHTML = "";
+  if (!coin) return;
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+  const items = [
+    ["All-Time High", coin.ath, "allTimeHigh", false],
+    ["All-Time Low", coin.atl, "allTimeLow", false],
+  ];
+  items.forEach(([label, value, defKey]) => rangeGrid.appendChild(makeIndicatorCard(label, value, defKey, false)));
+
+  const dateNote = document.createElement("p");
+  dateNote.className = "muted small";
+  dateNote.textContent = [
+    coin.ath_date ? `All-time high reached ${fmtDate(coin.ath_date)}.` : "",
+    coin.atl_date ? `All-time low reached ${fmtDate(coin.atl_date)}.` : "",
+  ].filter(Boolean).join(" ");
+  rangeGrid.appendChild(dateNote);
+
+  renderRangeGaugeGeneric(coin.atl, coin.ath, price);
 }
 
 function renderRecommendation(recArr) {
@@ -954,6 +1254,17 @@ const FILING_TYPE_INFO = {
   "SC 13G": { name: "Large Shareholder Disclosure", desc: "Filed by an investor who has passively acquired 5%+ of the company's shares." },
   "SC 13D": { name: "Large Shareholder Disclosure (Active)", desc: "Filed by an investor who has acquired 5%+ of the company's shares and may be seeking to influence the company." },
   "11-K": { name: "Employee Stock Plan Annual Report", desc: "Yearly financial report for the company's employee stock purchase or retirement plan." },
+  // ETFs/funds file completely different forms than companies do (no 10-K,
+  // no earnings) — these are the ones that actually show up for the ETFs
+  // in this app's curated lists, confirmed via a live filings request.
+  "NPORT-P": { name: "Portfolio Holdings Report", desc: "A monthly snapshot of exactly what the fund holds — every position, and how much of the fund's money is in each one." },
+  "N-CEN": { name: "Annual Fund Census", desc: "A yearly operational report about the fund itself (service providers, share classes, etc.) — not its holdings or performance." },
+  "N-30D": { name: "Shareholder Report", desc: "A periodic report to the fund's own shareholders covering performance and a summary of holdings, similar in spirit to a company's earnings report." },
+  "497": { name: "Prospectus Supplement", desc: "An update to the fund's prospectus — the document describing its strategy, fees, and risks." },
+  "497J": { name: "Prospectus Certification", desc: "A short filing certifying that a previously filed prospectus update meets SEC requirements." },
+  "485BPOS": { name: "Registration Update", desc: "An update to the fund's core registration statement with the SEC — routine, not tied to any specific event." },
+  "NSAR-U": { name: "Annual Report (Legacy Form)", desc: "An older annual reporting form for funds, since replaced by N-CEN — may still appear in older filing history." },
+  "24F-2NT": { name: "Share Sales Notice", desc: "An annual notice of how many new shares the fund sold over the year, used to calculate SEC registration fees — a regulatory formality, not performance data." },
 };
 
 function getFilingInfo(form) {
@@ -1238,7 +1549,9 @@ function renderScenarios(quote, metric) {
 }
 
 function renderOutlook(data) {
-  const outlook = generateOutlook(data);
+  const outlook = data.type === "etf" ? generateETFOutlook(data)
+    : data.type === "crypto" ? generateCryptoOutlook(data)
+    : generateOutlook(data);
   outlookHeadline.textContent = outlook.headline;
   outlookBullets.innerHTML = "";
   outlook.bullets.forEach(b => {

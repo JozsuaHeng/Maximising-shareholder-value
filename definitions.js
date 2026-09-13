@@ -265,4 +265,118 @@ const DEFINITIONS = {
     low: "Consistently missing estimates (negative surprise) can signal operational trouble or overly optimistic analyst expectations, and tends to be punished by the market.",
     sector: "Some sectors (e.g. mega-cap tech) are famous for a culture of conservative guidance and frequent small beats — a single miss there can be read very differently than the same miss in a sector with less predictable analyst modeling, like biotech.",
   },
+
+  // ---- ETF-specific (Price Performance / Trading Activity & Risk) ----
+  // ETFs don't have earnings, margins, or a balance sheet in the way a
+  // company does — Finnhub's fundamentals endpoints come back empty for
+  // them (confirmed directly, 2026-08-28). These replace Valuation/
+  // Growth/Profitability/Financial Health with metrics that DO exist for
+  // a fund: its own price-return history and trading behavior.
+  return5Day: {
+    what: "5-Day Return: how much the fund's share price has moved over the last 5 trading days.",
+    formula: "5-Day Return = (Price today − Price 5 trading days ago) ÷ Price 5 trading days ago",
+    high: "A large short-term move (in either direction) often reflects a specific news event or broad market swing hitting everything the fund holds at once, rather than anything fund-specific.",
+    low: "A small move just means a quiet week for whatever this fund tracks.",
+  },
+  returnMTD: {
+    what: "Month-to-Date Return: how much the fund's share price has moved since the first trading day of the current calendar month.",
+    formula: "MTD Return = (Price today − Price at start of month) ÷ Price at start of month",
+    high: "Resets to zero at the start of every month — a meaningful number by mid-to-late month, less so in the first day or two.",
+    low: "Same as above, just negative — down so far this month.",
+  },
+  return13Week: {
+    what: "13-Week Return: the fund's price return over roughly the last quarter (~3 months).",
+    formula: "13-Week Return = (Price today − Price 13 weeks ago) ÷ Price 13 weeks ago",
+    high: "A strong quarter for whatever this fund holds.",
+    low: "A weak quarter — worth checking whether it's fund-specific or the whole market/sector pulled back.",
+  },
+  return26Week: {
+    what: "26-Week Return: the fund's price return over roughly the last half-year.",
+    formula: "26-Week Return = (Price today − Price 26 weeks ago) ÷ Price 26 weeks ago",
+    high: "A strong 6-month stretch for this fund's holdings.",
+    low: "A weak 6-month stretch.",
+  },
+  avgVolume10Day: {
+    what: "10-Day Average Trading Volume: the average number of shares of this fund traded per day over the last 10 trading days (in millions).",
+    formula: "Average of daily shares traded, last 10 trading days",
+    high: "High, liquid trading volume generally means it's easy to buy/sell without moving the price much.",
+    low: "Low volume can mean wider bid-ask spreads and more price impact when trading larger amounts.",
+  },
+  avgVolume3Month: {
+    what: "3-Month Average Trading Volume: the same average daily shares traded, but over a longer 3-month window — smooths out any single unusually busy or quiet day.",
+    formula: "Average of daily shares traded, last 3 months",
+    high: "A consistently high 3-month average suggests durable liquidity, not just one busy week.",
+    low: "A consistently low 3-month average suggests this is a thinner, less-traded fund.",
+  },
+  volatility3Month: {
+    what: "3-Month Volatility: how much the fund's daily returns have bounced around over the last 3 months (a standard deviation, in percentage points) — a measure of choppiness, not direction.",
+    formula: "Standard deviation of daily price returns, last 3 months",
+    high: "Higher volatility means bigger day-to-day swings in either direction — more potential upside, but also bigger potential drawdowns.",
+    low: "Lower volatility means steadier, less dramatic day-to-day moves.",
+  },
+
+  // ---- Crypto-specific (Market Stats / Performance) ----
+  // Finnhub's free tier returns literally no data beyond a bare price for
+  // crypto symbols (confirmed directly) — this data comes from CoinGecko
+  // instead, the same source already used for the homepage Crypto tab.
+  marketCapRank: {
+    what: "Market Cap Rank: this coin's rank among all cryptocurrencies by total market value — #1 is the largest.",
+    formula: "Ranked by Market Cap = Price × Circulating Supply",
+    high: "A low rank number (e.g. #1–10) means one of the largest, most established cryptocurrencies.",
+    low: "A high rank number means a smaller, less established coin — generally more speculative and more volatile.",
+  },
+  circSupply: {
+    what: "Circulating Supply: the number of coins that currently exist and are publicly available/trading — like shares outstanding for a stock.",
+    formula: "Coins mined/issued so far, minus any confirmed as burned/locked",
+    high: "A very large circulating supply generally means each individual coin is worth less (the two move inversely for a given market cap) — not inherently good or bad, just a scale factor.",
+    low: "A small circulating supply relative to max supply means a lot more coins could still enter circulation over time, which can pressure the price if that happens quickly.",
+  },
+  maxSupply: {
+    what: "Max Supply: the absolute cap on how many coins will ever exist, if the protocol defines one (Bitcoin's is 21 million). Some cryptocurrencies have no max supply at all.",
+    formula: "Fixed by the coin's protocol rules, not a market figure",
+    high: "A high or unlimited max supply means the coin can keep being issued indefinitely — similar in effect to a company that can keep issuing new shares.",
+    low: "A capped, low max supply is often cited as a scarcity argument, similar to a fixed share count — though scarcity alone doesn't guarantee value.",
+  },
+  volume24h: {
+    what: "24-Hour Trading Volume: the total dollar value of this coin traded across exchanges in the last 24 hours.",
+    formula: "Sum of (price × quantity) for all trades in the last 24 hours",
+    high: "High volume relative to market cap suggests an actively traded, liquid coin.",
+    low: "Low volume relative to market cap can mean thinner liquidity and bigger price swings on individual trades.",
+  },
+  return24h: {
+    what: "24-Hour Return: how much the price has moved in the last 24 hours.",
+    formula: "24H Return = (Price now − Price 24h ago) ÷ Price 24h ago",
+    high: "Crypto routinely moves more in a day than stocks do in a month — a large daily move here is normal, not necessarily a signal of anything specific.",
+    low: "A quiet day, which is less typical for crypto than for stocks.",
+  },
+  return7Day: {
+    what: "7-Day Return: how much the price has moved over the last week.",
+    formula: "7-Day Return = (Price now − Price 7 days ago) ÷ Price 7 days ago",
+    high: "A strong week.",
+    low: "A weak week.",
+  },
+  return30Day: {
+    what: "30-Day Return: how much the price has moved over the last month.",
+    formula: "30-Day Return = (Price now − Price 30 days ago) ÷ Price 30 days ago",
+    high: "A strong month.",
+    low: "A weak month.",
+  },
+  return1Year: {
+    what: "1-Year Return: how much the price has moved over the last year.",
+    formula: "1-Year Return = (Price now − Price 1 year ago) ÷ Price 1 year ago",
+    high: "A strong year — though crypto's history is short and volatile, so a strong past year is no guarantee of another one.",
+    low: "A weak year — the flip side of the same volatility.",
+  },
+  allTimeHigh: {
+    what: "All-Time High (ATH): the highest price this coin has ever traded at, and when.",
+    formula: "Highest recorded price across the coin's trading history",
+    high: "Trading close to its all-time high means the market is currently as optimistic about this coin as it's ever been.",
+    low: "Trading far below its all-time high (common for most coins most of the time) just shows how far it's pulled back from its peak — not necessarily a buy signal.",
+  },
+  allTimeLow: {
+    what: "All-Time Low (ATL): the lowest price this coin has ever traded at, and when.",
+    formula: "Lowest recorded price across the coin's trading history",
+    high: "Trading far above its all-time low shows how much it's recovered/grown since its worst point.",
+    low: "Trading close to its all-time low means the market is currently as pessimistic about this coin as it's ever been.",
+  },
 };

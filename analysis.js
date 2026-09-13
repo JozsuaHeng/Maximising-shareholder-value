@@ -188,3 +188,69 @@ function generateOutlook({ symbol, quote, metric, recommendation }) {
     caveat: "This is an automated read based only on today's numbers, generated with fixed rules — not a live AI analysis, and not financial advice. It doesn't know about recent news, competitive position, or industry context, so use it as a starting point alongside your own research.",
   };
 }
+
+// ETFs have no earnings/margins/balance sheet — this reads purely off the
+// fund's own historical price behavior (the only real fundamentals-free
+// data Finnhub's free tier actually returns for a fund, confirmed
+// directly 2026-08-28), not the P/E-style logic above.
+function generateETFOutlook({ metric }) {
+  const bullets = [];
+  const ytd = metric.yearToDatePriceReturnDaily;
+  const week52 = metric["52WeekPriceReturnDaily"];
+  const week13 = metric["13WeekPriceReturnDaily"];
+  const beta = metric.beta;
+  const vol = metric["3MonthADReturnStd"];
+
+  if (isNum(week52)) bullets.push(`Over the past year, this fund's price has ${week52 >= 0 ? "risen" : "fallen"} about ${Math.abs(week52).toFixed(1)}%.`);
+  if (isNum(ytd)) bullets.push(`So far this calendar year, it's ${ytd >= 0 ? "up" : "down"} about ${Math.abs(ytd).toFixed(1)}%.`);
+  if (isNum(week13)) bullets.push(`Over the last quarter (~13 weeks), it's ${week13 >= 0 ? "up" : "down"} about ${Math.abs(week13).toFixed(1)}%.`);
+  if (isNum(beta)) {
+    if (beta > 1.1) bullets.push(`With a beta of ${beta.toFixed(2)}, this fund has historically swung more than the overall market — bigger moves in both directions.`);
+    else if (beta < 0.9) bullets.push(`With a beta of ${beta.toFixed(2)}, this fund has historically moved less than the overall market — a steadier ride either way.`);
+    else bullets.push(`With a beta of ${beta.toFixed(2)}, this fund has historically moved roughly in line with the overall market.`);
+  }
+  if (isNum(vol)) bullets.push(`Its 3-month volatility (day-to-day price swings) has run about ${vol.toFixed(1)} percentage points — higher means choppier, not automatically "riskier" in the sense of losing money.`);
+
+  let headline;
+  if (bullets.length === 0) headline = "Not enough data was returned to form a read on this fund.";
+  else if (isNum(week52) && week52 > 10) headline = `This fund has had a strong past year, up about ${week52.toFixed(1)}%.`;
+  else if (isNum(week52) && week52 < -10) headline = `This fund has had a difficult past year, down about ${Math.abs(week52).toFixed(1)}%.`;
+  else headline = "This fund's price has moved within a fairly typical range over the past year.";
+
+  return {
+    headline,
+    bullets,
+    caveat: "ETFs don't have earnings, margins, or a P/E ratio the way individual companies do — this read is based purely on the fund's own historical price behavior, not a live AI analysis, and not financial advice.",
+  };
+}
+
+// Crypto: Finnhub returns nothing beyond a bare price for these symbols
+// (confirmed directly, 2026-08-28) — this reads off CoinGecko's per-coin
+// data instead (same source as the homepage Crypto tab).
+function generateCryptoOutlook({ coin }) {
+  if (!coin) return { headline: "Not enough data was returned to form a read on this coin.", bullets: [], caveat: "" };
+
+  const bullets = [];
+  const pct24h = coin.price_change_percentage_24h;
+  const pct7d = coin.price_change_percentage_7d;
+  const pct30d = coin.price_change_percentage_30d;
+  const athChange = coin.ath_change_percentage;
+
+  if (isNum(pct24h)) bullets.push(`Over the last 24 hours, the price has ${pct24h >= 0 ? "risen" : "fallen"} about ${Math.abs(pct24h).toFixed(1)}%.`);
+  if (isNum(pct7d)) bullets.push(`Over the last 7 days, it's ${pct7d >= 0 ? "up" : "down"} about ${Math.abs(pct7d).toFixed(1)}%.`);
+  if (isNum(pct30d)) bullets.push(`Over the last 30 days, it's ${pct30d >= 0 ? "up" : "down"} about ${Math.abs(pct30d).toFixed(1)}%.`);
+  if (isNum(athChange)) bullets.push(`It's currently trading about ${Math.abs(athChange).toFixed(1)}% ${athChange >= 0 ? "above" : "below"} its all-time high.`);
+  if (isNum(coin.market_cap_rank)) bullets.push(`By market cap, it currently ranks #${coin.market_cap_rank} among all cryptocurrencies.`);
+
+  let headline;
+  if (bullets.length === 0) headline = "Not enough data was returned to form a read on this coin.";
+  else if (isNum(pct7d) && pct7d > 10) headline = `This coin has had a strong week, up about ${pct7d.toFixed(1)}%.`;
+  else if (isNum(pct7d) && pct7d < -10) headline = `This coin has had a rough week, down about ${Math.abs(pct7d).toFixed(1)}%.`;
+  else headline = "This coin's price has moved within a fairly typical range this week.";
+
+  return {
+    headline,
+    bullets,
+    caveat: "Cryptocurrency has no earnings, revenue, or company fundamentals behind it — this read is based purely on recent price behavior, not a live AI analysis, and not financial advice. Crypto is highly volatile; past moves say nothing reliable about what happens next.",
+  };
+}
