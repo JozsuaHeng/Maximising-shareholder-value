@@ -25,8 +25,11 @@ const CRYPTO_ITEMS = Object.keys(CRYPTO_COINGECKO_IDS).map(symbol => [symbol, { 
 
 // FRED has no CORS support at all (confirmed directly), so unlike
 // Finnhub/Twelve Data/CoinGecko, it can't be called directly even from
-// local dev — this always goes through the deployed Worker.
-const FRED_PROXY_BASE = "https://maximising-shareholder-value.jozsua-heng.workers.dev";
+// local dev — this always goes through the deployed Worker. Falls back to
+// the current combined deployment's URL when API_BASE_URL (script.js)
+// hasn't been set to a separately-deployed backend yet — once it is, FRED
+// follows automatically, same as the other three proxied APIs.
+const FRED_PROXY_BASE = API_BASE_URL || "https://maximising-shareholder-value.jozsua-heng.workers.dev";
 
 function coingeckoUrl(path, params) {
   const search = new URLSearchParams(params || {});
@@ -37,7 +40,7 @@ function coingeckoUrl(path, params) {
     return `https://api.coingecko.com/api/v3${path}?${search.toString()}`;
   }
   search.set("path", path);
-  return `/api/coingecko?${search.toString()}`;
+  return `${API_BASE_URL}/api/coingecko?${search.toString()}`;
 }
 
 function fredUrl(seriesId, extraParams) {

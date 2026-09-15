@@ -32,6 +32,17 @@ function getRecentlyViewed() {
 // FINNHUB_API_KEY/TWELVE_DATA_API_KEY when IS_LOCAL_DEV is false).
 const IS_LOCAL_DEV = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 
+// Empty by default: every "/api/xxx" proxy path below resolves relative
+// to whatever domain served this page — correct as long as the frontend
+// and the Worker (worker.js) are the same deployment, which is true today.
+// If this ever splits into separate repos/deployments (frontend on
+// Cloudflare Pages, worker.js as its own standalone Worker), set this to
+// that Worker's absolute URL (e.g. "https://msv-api.<you>.workers.dev")
+// and every proxied call below — Finnhub, Twelve Data, CoinGecko, FRED —
+// follows automatically. This is the ONE line that needs to change for
+// that split; nothing else in these four URL helpers does.
+const API_BASE_URL = "";
+
 // Every Finnhub request, whether called directly (local dev) or proxied
 // (deployed), builds its URL through this one function — so it's the one
 // place to log "a Finnhub request is about to be sent" for the API usage
@@ -49,7 +60,7 @@ function finnhubUrl(path, params) {
     return `https://finnhub.io/api/v1${path}?${search.toString()}`;
   }
   search.set("path", path);
-  return `/api/finnhub?${search.toString()}`;
+  return `${API_BASE_URL}/api/finnhub?${search.toString()}`;
 }
 
 // ---- DOM refs ----

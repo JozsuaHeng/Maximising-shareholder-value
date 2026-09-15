@@ -128,7 +128,7 @@ function twelveDataUrl(path, params) {
     return `https://api.twelvedata.com${path}?${search.toString()}`;
   }
   search.set("path", path);
-  return `/api/twelvedata?${search.toString()}`;
+  return `${API_BASE_URL}/api/twelvedata?${search.toString()}`;
 }
 
 // ---- DOM refs ----
